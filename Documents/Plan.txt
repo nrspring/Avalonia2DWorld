@@ -1,0 +1,22 @@
+Main Display Control
+- Render(AvaloniaControl control, Tile[] tiles, Renderer renderer) 
+- NotifyTileHover(func<int,int,Task> handler) <-- need to control.InvalidateVisual after execution
+- NotifyTileClick(func<int,int,Task> handler) <-- need to control.InvalidateVisual after execution
+- NotifyTileRightClick(func<int,int,Task> handler) <-- need to control.InvalidateVisual after execution
+
+Class Tile
+- int x
+- int y
+- int elevation
+- RenderComponent[] components
+
+
+
+Class Renderer
+//This needs to be re-worked, pass in the canvas and x,y and draw it
+bitmap RenderTile(RenderComponent[] components)
+bitmap RenderComponent(bitmap source, RenderComponent component)
+
+Class RenderComponent
+guid type
+string[] params
