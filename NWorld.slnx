@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="NWorld.Map.Viewer/NWorld.Map.Viewer.csproj" />
+  <Project Path="NWorld.WorldGeneration.App/NWorld.WorldGeneration.App.csproj" />
+</Solution>
