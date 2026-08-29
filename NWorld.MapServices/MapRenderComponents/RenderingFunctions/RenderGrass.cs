@@ -44,11 +44,9 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         private const int GroundPeriod = 10;
         private const int PatchPeriod = 8;
 
-        // The map-space tone field: one texel per tile, repeating every TonePeriod tiles.
-        private const int TonePeriod = 128;
         private const float ToneStrength = 42f;
 
-        // Lattice sizes for the tone field, in cells across TonePeriod tiles: the broad light
+        // Lattice sizes for the tone field, in cells across its period: the broad light
         // and dark stretches come out roughly 10 tiles across, the dry ones roughly 20.
         private const int ToneLattice = 12;
         private const int DryLattice = 6;
@@ -77,11 +75,23 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         // thread and keep only one result, which with Prewarm running alongside a repaint
         // would mean two full pool builds, a leaked image, and a byte count that never
         // matches what is actually held. A Lazy that loses the race is simply never forced.
-        private static readonly ConcurrentDictionary<int, Lazy<VariantAtlas>> Atlases = new();
-        private static long _cacheBytes;
+        private static readonly ZoomLevelCache<VariantAtlas> Atlases = new(MaxCacheBytes, BuildAtlas);
 
-        private static readonly ConcurrentDictionary<int, SKPaint> TonePaints = new();
-        private static readonly Lazy<SKImage> ToneField = new(BuildToneField, isThreadSafe: true);
+        /// <summary>
+        /// The broad light and dark stretches. Everything in a variant is fine detail, so this
+        /// is what keeps a meadow from reading as a pool of tiles -- see <see cref="MapOverlayField"/>.
+        /// </summary>
+        private static readonly MapOverlayField ToneField = new(static (u, v) =>
+        {
+            var n = PeriodicFbm(u, v, ToneLattice, 4, Seed ^ 0x70A5u);
+            var dry = PeriodicFbm(u, v, DryLattice, 2, Seed ^ 0xD47Au);
+            var level = MapOverlayField.Level(n, ToneStrength);
+
+            return new SKColor(
+                (byte)Clamp255(level + dry * 10f),
+                (byte)Clamp255(level + 2f),
+                (byte)Clamp255(level - dry * 12f));
+        });
 
         // Blur is the most expensive thing in a variant build and a mask filter is immutable
         // once made, so clumps wanting a similar sigma share one instead of each allocating.
@@ -175,7 +185,7 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             if (canvas is null || tileSize <= 0 || tiles.Length == 0)
                 return Task.CompletedTask;
 
-            var atlas = GetAtlas(tileSize);
+            var atlas = Atlases.Get(tileSize);
 
             BlitTiles(canvas, atlas, tiles, tileSize);
             PaintMeadowTone(canvas, tiles, tileSize);
@@ -245,7 +255,7 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         /// </para>
         /// </summary>
         private static void PaintMeadowTone(SKCanvas canvas, ReadOnlySpan<TilePlacement> tiles, int tileSize) =>
-            TileRuns.Fill(canvas, tiles, tileSize, GetTonePaint(tileSize));
+            TileRuns.Fill(canvas, tiles, tileSize, ToneField.PaintFor(tileSize));
 
         /// <summary>
         /// Builds the atlas for <paramref name="tileSize"/> off the calling thread, so a zoom
@@ -253,8 +263,7 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         /// size that was never prewarmed still works; it just pays for the build in the frame
         /// that first asks for it.
         /// </summary>
-        public static Task Prewarm(int tileSize) =>
-            tileSize <= 0 ? Task.CompletedTask : Task.Run(() => GetAtlas(tileSize));
+        public static Task Prewarm(int tileSize) => Atlases.Prewarm(tileSize);
 
         /// <summary>
         /// Drops every cached atlas and tone paint; they are rebuilt on the next draw. Worth
@@ -264,23 +273,8 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         /// </summary>
         public static void ClearCache()
         {
-            foreach (var key in Atlases.Keys)
-            {
-                if (Atlases.TryRemove(key, out var atlas) && atlas.IsValueCreated)
-                {
-                    Interlocked.Add(ref _cacheBytes, -atlas.Value.Bytes);
-                    atlas.Value.Dispose();
-                }
-            }
-
-            foreach (var key in TonePaints.Keys)
-            {
-                if (TonePaints.TryRemove(key, out var paint))
-                {
-                    paint.Shader?.Dispose();
-                    paint.Dispose();
-                }
-            }
+            Atlases.Clear();
+            ToneField.Clear();
         }
 
         // ---- variant atlas -------------------------------------------------------
@@ -298,7 +292,7 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         /// working set to one texture per zoom level rather than hundreds.
         /// </para>
         /// </summary>
-        private sealed class VariantAtlas : IDisposable
+        private sealed class VariantAtlas : IZoomLevelResource
         {
             public required SKImage Image { get; init; }
 
@@ -320,13 +314,6 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
 
             public required long Bytes { get; init; }
 
-            /// <summary>
-            /// Wall-clock stamp of the last draw, for eviction order. Written without
-            /// synchronisation from the per-tile path; a lost update costs nothing worse than
-            /// a slightly stale eviction order.
-            /// </summary>
-            public long LastUsed;
-
             public SKRect Source(int cell)
             {
                 var column = cell % Columns;
@@ -339,58 +326,6 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             }
 
             public void Dispose() => Image.Dispose();
-        }
-
-        private static VariantAtlas GetAtlas(int tileSize)
-        {
-            if (Atlases.TryGetValue(tileSize, out var cached) && cached.IsValueCreated)
-            {
-                cached.Value.LastUsed = Environment.TickCount64;
-                return cached.Value;
-            }
-
-            var lazy = Atlases.GetOrAdd(tileSize, static size => new Lazy<VariantAtlas>(() =>
-            {
-                var built = BuildAtlas(size);
-                Interlocked.Add(ref _cacheBytes, built.Bytes);
-                return built;
-            }, LazyThreadSafetyMode.ExecutionAndPublication));
-
-            var atlas = lazy.Value;
-            atlas.LastUsed = Environment.TickCount64;
-            Trim(keep: tileSize);
-            return atlas;
-        }
-
-        /// <summary>
-        /// Evicts least-recently-drawn zoom levels until the cache is back inside its budget.
-        /// Only ever runs just after a build, never on the per-tile path, and never touches
-        /// the size that build was for -- which is the size the caller is about to draw.
-        /// </summary>
-        private static void Trim(int keep)
-        {
-            if (Interlocked.Read(ref _cacheBytes) <= MaxCacheBytes)
-                return;
-
-            // Anything still building is skipped rather than waited on: forcing a half-built
-            // Lazy here would block this thread on a pool it is about to throw away.
-            var candidates = Atlases
-                .Where(entry => entry.Key != keep && entry.Value.IsValueCreated)
-                .OrderBy(entry => entry.Value.Value.LastUsed)
-                .Select(entry => entry.Key)
-                .ToList();
-
-            foreach (var size in candidates)
-            {
-                if (Interlocked.Read(ref _cacheBytes) <= MaxCacheBytes)
-                    return;
-
-                if (Atlases.TryRemove(size, out var victim) && victim.IsValueCreated)
-                {
-                    Interlocked.Add(ref _cacheBytes, -victim.Value.Bytes);
-                    victim.Value.Dispose();
-                }
-            }
         }
 
         private static VariantAtlas BuildAtlas(int tileSize)
@@ -487,59 +422,6 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         }
 
         // ---- tone field ----------------------------------------------------------
-
-        /// <summary>
-        /// The coarse map-space tone field, one texel per tile. Neutral grey is a no-op under
-        /// <see cref="SKBlendMode.Overlay"/>, so texels either side of it darken or lighten
-        /// the ground.
-        /// </summary>
-        private static SKImage BuildToneField()
-        {
-            // Built as raw RGBA and handed to SKImage rather than kept as an SKBitmap: the
-            // shader below wants an immutable, uploadable image, and a bitmap-backed shader
-            // leaves the GPU backend re-checking a mutable source it can never cache well.
-            var pixels = new byte[TonePeriod * TonePeriod * 4];
-            var scale = 1f / TonePeriod;
-            var i = 0;
-
-            for (var ty = 0; ty < TonePeriod; ty++)
-            {
-                for (var tx = 0; tx < TonePeriod; tx++)
-                {
-                    var n = PeriodicFbm(tx * scale, ty * scale, ToneLattice, 4, Seed ^ 0x70A5u);
-                    var dry = PeriodicFbm(tx * scale, ty * scale, DryLattice, 2, Seed ^ 0xD47Au);
-
-                    var level = 128f + (n - 0.5f) * 2f * ToneStrength;
-
-                    pixels[i++] = (byte)Clamp255(level + dry * 10f);
-                    pixels[i++] = (byte)Clamp255(level + 2f);
-                    pixels[i++] = (byte)Clamp255(level - dry * 12f);
-                    pixels[i++] = 0xFF;
-                }
-            }
-
-            var info = new SKImageInfo(TonePeriod, TonePeriod, SKColorType.Rgba8888, SKAlphaType.Opaque);
-            return SKImage.FromPixelCopy(info, pixels);
-        }
-
-        /// <summary>
-        /// The paint that lays the tone field over a tile. Cached per tile size and only ever
-        /// read after construction, so it is safe to share across draws.
-        /// </summary>
-        private static SKPaint GetTonePaint(int tileSize) =>
-            TonePaints.GetOrAdd(tileSize, static size => new SKPaint
-            {
-                // One texel per tile, so a tile samples its own texel centre and blends
-                // smoothly towards its neighbours' rather than stopping at the edge.
-                Shader = SKShader.CreateImage(
-                    ToneField.Value,
-                    SKShaderTileMode.Repeat,
-                    SKShaderTileMode.Repeat,
-                    SKMatrix.CreateScale(size, size)),
-                BlendMode = SKBlendMode.Overlay,
-                FilterQuality = SKFilterQuality.Low,
-                IsAntialias = false,
-            });
 
         // ---- one variant ---------------------------------------------------------
 
