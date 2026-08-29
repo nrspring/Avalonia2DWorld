@@ -13,12 +13,17 @@ namespace NWorld.MapServices.MapRenderComponents
         /// Fills every tile in <paramref name="tiles"/> with <paramref name="paint"/>, one rect
         /// per run of horizontally adjacent tiles.
         /// <para>
-        /// Only sound for a paint whose shader is anchored to the canvas rather than to the
-        /// rect being filled, which is true of every shader here: they are built with a scale
-        /// or a repeat and no translation, so what lands on a pixel depends on where the pixel
-        /// is and not on which draw covered it. Given that, any decomposition of an area into
-        /// rects paints identical pixels -- verified by checksum, one rect per tile against one
-        /// per row.
+        /// Only sound for a paint whose colour at a pixel depends on where that pixel is and
+        /// not on which draw covered it: a solid colour, or a shader anchored to the canvas
+        /// rather than to the rect being filled. Every shader passed here is built with a
+        /// scale or a repeat and no translation, so all of them qualify. Given that, any
+        /// decomposition of an area into rects paints identical pixels -- verified by
+        /// checksum, one rect per tile against one per row.
+        /// </para>
+        /// <para>
+        /// A translucent paint additionally needs antialiasing off. Runs share their edges
+        /// exactly, and an antialiased edge gives both sides partial coverage, which a
+        /// translucent fill shows as a seam.
         /// </para>
         /// <para>
         /// Runs are found by walking the batch in the order the renderer collected it and

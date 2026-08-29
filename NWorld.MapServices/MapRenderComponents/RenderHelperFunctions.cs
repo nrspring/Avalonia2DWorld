@@ -27,8 +27,8 @@ namespace NWorld.MapServices.MapRenderComponents
             { MapRenderComponentConstants.DeepWater, new(RenderDeepWater.Render, RenderDeepWater.Prewarm, RenderDeepWater.ClearCache) },
             { MapRenderComponentConstants.Swamp, new(RenderSwamp.Render) },
             { MapRenderComponentConstants.Desert, new(RenderDesert.Render) },
-            { MapRenderComponentConstants.Hover, new(RenderHover.Render) },
-            { MapRenderComponentConstants.Selected, new(RenderSelected.Render) },
+            { MapRenderComponentConstants.Hover, new(RenderHover.Render, RenderHover.Prewarm, RenderHover.ClearCache) },
+            { MapRenderComponentConstants.Selected, new(RenderSelected.Render, RenderSelected.Prewarm, RenderSelected.ClearCache) },
             { MapRenderComponentConstants.Range, new(RenderRange.Render) },
         };
 
