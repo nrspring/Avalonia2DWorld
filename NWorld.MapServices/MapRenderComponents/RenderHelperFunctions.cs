@@ -22,6 +22,9 @@ namespace NWorld.MapServices.MapRenderComponents
             { MapRenderComponentConstants.Range, RenderRange.Render },
         };
 
+        /// <summary>
+        /// Draws one component across every tile in <paramref name="context"/> that carries it.
+        /// </summary>
         public static Task RenderComponent(TileRenderContext context, Guid componentType)
         {
             if (!Renderers.TryGetValue(componentType, out var renderer))
@@ -31,7 +34,9 @@ namespace NWorld.MapServices.MapRenderComponents
         }
 
         /// <summary>
-        /// Draws one of a tile's components, taking its type and arguments from the component itself.
+        /// Draws one component on one tile. A convenience for tests and one-off renders; a
+        /// real frame should go through <see cref="Renderers.StandardRenderer"/>, which
+        /// batches, rather than calling this in a loop.
         /// </summary>
         public static Task RenderComponent(SKCanvas canvas, RenderFrame frame, int x, int y, MapRenderComponent component) =>
             RenderComponent(

@@ -25,8 +25,10 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
     /// </para>
     /// <para>
     /// The variants for one tile size live together in a single atlas image rather than one
-    /// image each -- see <see cref="VariantAtlas"/>. That is the one arrangement decision here
-    /// that a raster canvas is indifferent to and a GPU-backed one is not.
+    /// image each -- see <see cref="VariantAtlas"/> -- and a whole batch of tiles is drawn
+    /// with one DrawAtlas and one covering rect per run, rather than two draws per tile. Both
+    /// are arrangement decisions a raster canvas is largely indifferent to and a GPU-backed
+    /// one is not.
     /// </para>
     /// </summary>
     public static class RenderGrass
@@ -50,17 +52,16 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         private const int ToneLattice = 12;
         private const int DryLattice = 6;
 
-        // A one-pixel skirt around each variant in the atlas, holding what wraps around from
-        // the opposite edge, so that sampling which strays past a cell finds the right pixels
+        // A one-pixel skirt around each cell in the atlas, holding what wraps around from the
+        // opposite edge, so that sampling which strays past a cell finds the right pixels
         // rather than the next variant's.
         //
-        // Measured, it is currently doing nothing: with BlitPaint's nearest sampling Skia
-        // constrains reads to the source rect, and a map drawn with and without the skirt is
-        // bit-identical under sub-pixel panning and at 1.25x, 1.5x and 2x display scaling. It
-        // stays because that is an implementation detail rather than a promise, and because
-        // of how the two sides of the trade compare: a few per cent of atlas memory against a
-        // faint bright grid over the whole map, which is both the one artifact this file
-        // exists to prevent and a thoroughly confusing one to track back to here.
+        // This was insurance while tiles were blitted with DrawImage, which constrains reads
+        // to the source rect -- a map drawn with and without the skirt came out bit-identical
+        // under sub-pixel panning and at 1.25x, 1.5x and 2x display scaling. DrawAtlas gives
+        // no such guarantee: sprite padding is the caller's job there, and the artifact it
+        // prevents is a faint bright grid over the whole map, which is both the one thing this
+        // file exists to avoid and a thoroughly confusing one to track back to here.
         private const int Gutter = 1;
 
         // Atlas ceilings. The edge cap keeps us inside every sane GL_MAX_TEXTURE_SIZE; the
@@ -95,6 +96,11 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             IsAntialias = false,
         };
 
+        // Per-thread so that a background Prewarm and a repaint never share them. Held
+        // between frames rather than rented: the visible tile count barely changes.
+        [ThreadStatic] private static SKRect[]? Sprites;
+        [ThreadStatic] private static SKRotationScaleMatrix[]? Transforms;
+
         private static readonly SKColor GrassDark = new(0x39, 0x63, 0x2C);
         private static readonly SKColor GrassMid = new(0x5C, 0x8B, 0x3B);
         private static readonly SKColor GrassLight = new(0x7C, 0xAA, 0x50);
@@ -118,11 +124,18 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         /// Whether blades are gathered into clumps with shadows under them and the odd flower,
         /// or the tile is just a mottled mat with a few strays over it.
         /// </param>
+        /// <param name="Mirrored">
+        /// Whether each variant also gets a mirrored cell, doubling the variety for the cost of
+        /// doubling the atlas. Worth it while a screenful is thousands of tiles; above that the
+        /// pool already outnumbers what is on screen, and the second copy buys nothing but a
+        /// bigger atlas to compose on the first paint.
+        /// </param>
         private readonly record struct DetailLevel(
             int Variants,
             int GroundOctaves,
             int PatchOctaves,
-            bool Tufted);
+            bool Tufted,
+            bool Mirrored);
 
         private static DetailLevel DetailFor(int tileSize) => tileSize switch
         {
@@ -131,62 +144,138 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             // octave counts are cut for the same reason rather than to save time: at this size
             // a third octave's cells are already under a pixel across, so it would contribute
             // aliasing and not detail.
-            < 16 => new DetailLevel(Variants: 64, GroundOctaves: 2, PatchOctaves: 1, Tufted: false),
+            < 16 => new DetailLevel(Variants: 64, GroundOctaves: 2, PatchOctaves: 1, Tufted: false, Mirrored: true),
 
             // Full treatment from here up.
-            < 32 => new DetailLevel(Variants: 192, GroundOctaves: 3, PatchOctaves: 2, Tufted: true),
-            < 64 => new DetailLevel(Variants: 256, GroundOctaves: 3, PatchOctaves: 2, Tufted: true),
-            < 128 => new DetailLevel(Variants: 128, GroundOctaves: 3, PatchOctaves: 2, Tufted: true),
-            _ => new DetailLevel(Variants: 64, GroundOctaves: 3, PatchOctaves: 2, Tufted: true),
+            < 32 => new DetailLevel(Variants: 192, GroundOctaves: 3, PatchOctaves: 2, Tufted: true, Mirrored: true),
+
+            // From 64px a screenful is under a thousand tiles, so the pool already covers it
+            // several times over and the mirror stops paying for its half of the atlas.
+            < 64 => new DetailLevel(Variants: 256, GroundOctaves: 3, PatchOctaves: 2, Tufted: true, Mirrored: true),
+            < 128 => new DetailLevel(Variants: 128, GroundOctaves: 3, PatchOctaves: 2, Tufted: true, Mirrored: false),
+            _ => new DetailLevel(Variants: 64, GroundOctaves: 3, PatchOctaves: 2, Tufted: true, Mirrored: false),
         };
 
         /// <summary>
-        /// Grass does not animate, so <see cref="TileRenderContext.TimeSeconds"/> is ignored
-        /// and a tile stays cached across frames.
+        /// Draws every grass tile in the batch. Grass does not animate, so
+        /// <see cref="TileRenderContext.TimeSeconds"/> is ignored and the atlas stays cached
+        /// across frames.
+        /// <para>
+        /// Two draws for the whole batch where there used to be two per tile: one DrawAtlas
+        /// for the ground, and one covering rect per run of horizontally adjacent tiles for
+        /// the tone. The tone shader is anchored to the canvas rather than to the rect being
+        /// filled, so a run produces the same pixels as the tiles it replaces.
+        /// </para>
         /// </summary>
         public static Task Render(TileRenderContext context)
         {
             var canvas = context.Canvas;
             var tileSize = context.TileSize;
-            int x = context.X, y = context.Y;
+            var tiles = context.Tiles;
 
-            if (canvas is null || tileSize <= 0)
+            if (canvas is null || tileSize <= 0 || tiles.Length == 0)
                 return Task.CompletedTask;
 
             var atlas = GetAtlas(tileSize);
 
-            var hash = Hash(x, y, Seed);
-            var variant = (int)(hash % (uint)atlas.Variants);
-            var mirrored = ((hash >> 20) & 1u) == 1u;
-
-            var source = atlas.Source(variant);
-
-            if (mirrored)
-            {
-                // Reflecting about the y axis sends local x to -x on the device, so the
-                // destination goes in negated and the tile lands where it would have anyway.
-                canvas.Save();
-                canvas.Scale(-1f, 1f);
-                canvas.DrawImage(
-                    atlas.Image,
-                    source,
-                    SKRect.Create(-(x + 1) * tileSize, y * tileSize, tileSize, tileSize),
-                    BlitPaint);
-                canvas.Restore();
-            }
-            else
-            {
-                canvas.DrawImage(
-                    atlas.Image,
-                    source,
-                    SKRect.Create(x * tileSize, y * tileSize, tileSize, tileSize),
-                    BlitPaint);
-            }
-
-            PaintMeadowTone(canvas, tileSize, x, y);
+            BlitTiles(canvas, atlas, tiles, tileSize);
+            PaintMeadowTone(canvas, tiles, tileSize);
 
             return Task.CompletedTask;
         }
+
+        /// <summary>
+        /// Lays every tile's texture down in one DrawAtlas call.
+        /// <para>
+        /// Note that DrawAtlas, unlike DrawImage with a source rect, does not constrain
+        /// sampling to the sprite -- which is what finally makes <see cref="Gutter"/> earn its
+        /// keep rather than being insurance.
+        /// </para>
+        /// </summary>
+        private static void BlitTiles(SKCanvas canvas, VariantAtlas atlas, ReadOnlySpan<TilePlacement> tiles, int tileSize)
+        {
+            var count = tiles.Length;
+            var sprites = Sprites;
+            var transforms = Transforms;
+
+            // DrawAtlas takes whole arrays, so these are grown to the exact count and then
+            // held: a steady view redraws the same number of tiles every frame and stops
+            // allocating entirely.
+            if (sprites is null || sprites.Length != count)
+                Sprites = sprites = new SKRect[count];
+            if (transforms is null || transforms.Length != count)
+                Transforms = transforms = new SKRotationScaleMatrix[count];
+
+            for (var i = 0; i < count; i++)
+            {
+                var tile = tiles[i];
+
+                // One hash picks both the variant and which way round it faces, since the
+                // mirror is just the odd cell of the pair.
+                var cell = (int)(Hash(tile.X, tile.Y, Seed) % (uint)atlas.Cells);
+
+                sprites[i] = atlas.Source(cell);
+                transforms[i] = new SKRotationScaleMatrix(1f, 0f, tile.X * tileSize, tile.Y * tileSize);
+            }
+
+            canvas.DrawAtlas(atlas.Image, sprites, transforms, BlitPaint);
+        }
+
+        /// <summary>
+        /// Shades the tiles against a coarse noise field sampled in map space, one texel per
+        /// tile and filtered smoothly, so the map gets lighter and darker stretches that run
+        /// across tile boundaries instead of stopping at them.
+        /// <para>
+        /// Drawn as one rect per run of horizontally adjacent tiles. The run is found by
+        /// walking the batch in the order the renderer collected it and extending while the
+        /// next tile is the previous one's right-hand neighbour; a batch that arrives in
+        /// reading order collapses to about one rect per row, and one that arrives shuffled
+        /// still draws correctly, just with more rects.
+        /// </para>
+        /// <para>
+        /// This is the draw a GPU backend cannot make cheap, and coalescing is the reason it
+        /// no longer matters much. Overlay is one of Skia's advanced blend modes, and unless
+        /// the driver advertises advanced blend equations -- the ANGLE/D3D path a Windows app
+        /// usually lands on does not -- the GPU backend implements it by reading the
+        /// destination back. It survives because the obvious replacement does not work: Skia
+        /// branches Overlay on the *destination*, so no fixed source reproduces it with
+        /// coefficient modes. Multiplying by min(2s, 1) and then screening with max(2s - 1, 0)
+        /// -- exact if the branch were on the source -- comes out a mean of 10/255 and a peak
+        /// of 87/255 away from it across the grass palette, which is a plainly different
+        /// ground.
+        /// </para>
+        /// </summary>
+        private static void PaintMeadowTone(SKCanvas canvas, ReadOnlySpan<TilePlacement> tiles, int tileSize)
+        {
+            var paint = GetTonePaint(tileSize);
+
+            var runX = tiles[0].X;
+            var runY = tiles[0].Y;
+            var runLength = 1;
+
+            for (var i = 1; i < tiles.Length; i++)
+            {
+                var tile = tiles[i];
+
+                if (tile.Y == runY && tile.X == runX + runLength)
+                {
+                    runLength++;
+                    continue;
+                }
+
+                DrawRun(canvas, paint, runX, runY, runLength, tileSize);
+                runX = tile.X;
+                runY = tile.Y;
+                runLength = 1;
+            }
+
+            DrawRun(canvas, paint, runX, runY, runLength, tileSize);
+        }
+
+        private static void DrawRun(SKCanvas canvas, SKPaint paint, int x, int y, int length, int tileSize) =>
+            canvas.DrawRect(
+                SKRect.Create(x * tileSize, y * tileSize, length * tileSize, tileSize),
+                paint);
 
         /// <summary>
         /// Builds the atlas for <paramref name="tileSize"/> off the calling thread, so a zoom
@@ -196,33 +285,6 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         /// </summary>
         public static Task Prewarm(int tileSize) =>
             tileSize <= 0 ? Task.CompletedTask : Task.Run(() => GetAtlas(tileSize));
-
-        /// <summary>
-        /// Shades the tile against a coarse noise field sampled in map space, one texel per
-        /// tile and filtered smoothly, so the map gets lighter and darker stretches that run
-        /// across tile boundaries instead of stopping at them.
-        /// <para>
-        /// This is the one draw per tile that a GPU backend cannot make cheap. Overlay is one
-        /// of Skia's advanced blend modes, and unless the driver advertises advanced blend
-        /// equations -- the ANGLE/D3D path a Windows app usually lands on does not -- the GPU
-        /// backend implements it by reading the destination back. It survives here anyway
-        /// because the obvious replacement does not work: Skia branches Overlay on the
-        /// *destination*, so no fixed source can reproduce it with coefficient modes.
-        /// Multiplying by min(2s, 1) and then screening with max(2s - 1, 0) -- which is exact
-        /// if the branch is on the source -- comes out a mean of 10/255 and a peak of 87/255
-        /// away from it across the grass palette, which is a plainly different ground.
-        /// </para>
-        /// <para>
-        /// The cost is bounded by tile count, so if it ever shows up in a profile the fix is
-        /// to stop drawing it per tile: one Overlay rect can cover a whole run of adjacent
-        /// grass tiles. That needs the renderer to hand this function a run rather than a
-        /// tile, so it is a change to <see cref="IMapRenderer"/>'s shape and not to this file.
-        /// </para>
-        /// </summary>
-        private static void PaintMeadowTone(SKCanvas canvas, int tileSize, int x, int y) =>
-            canvas.DrawRect(
-                SKRect.Create(x * tileSize, y * tileSize, tileSize, tileSize),
-                GetTonePaint(tileSize));
 
         /// <summary>
         /// Drops every cached atlas and tone paint; they are rebuilt on the next draw. Worth
@@ -269,7 +331,17 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         private sealed class VariantAtlas : IDisposable
         {
             public required SKImage Image { get; init; }
-            public required int Variants { get; init; }
+
+            /// <summary>
+            /// Drawable cells, which is twice the variant count: a variant and its mirror sit
+            /// in the atlas as two cells rather than one cell drawn under a flipped canvas.
+            /// DrawAtlas positions each sprite with a rotation and a scale, and a reflection
+            /// is neither, so the flip has to be baked. It is close to free to bake -- a
+            /// mirrored blit of an image that is already built -- and it buys back the
+            /// save/scale/restore that every mirrored tile used to pay.
+            /// </summary>
+            public required int Cells { get; init; }
+
             public required int Columns { get; init; }
             public required int TileSize { get; init; }
 
@@ -285,10 +357,10 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             /// </summary>
             public long LastUsed;
 
-            public SKRect Source(int variant)
+            public SKRect Source(int cell)
             {
-                var column = variant % Columns;
-                var row = variant / Columns;
+                var column = cell % Columns;
+                var row = cell / Columns;
                 return SKRect.Create(
                     column * Cell + Gutter,
                     row * Cell + Gutter,
@@ -356,14 +428,18 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             var detail = DetailFor(tileSize);
             var cell = tileSize + Gutter * 2;
 
-            // Trim the pool to what fits rather than refusing to draw. Both caps only bite at
-            // the large tile sizes, where the pool is deliberately small to begin with.
+            // Trim the pool to what fits rather than refusing to draw. The caps are on cells,
+            // of which a variant needs two, and they only bite at the large tile sizes where
+            // the pool is deliberately small to begin with.
             var perEdge = Math.Max(1, MaxAtlasEdge / cell);
             var byBytes = Math.Max(1, (int)(MaxAtlasBytes / (4L * cell * cell)));
-            var variants = Math.Min(detail.Variants, Math.Min(perEdge * perEdge, byBytes));
+            var perVariant = detail.Mirrored ? 2 : 1;
+            var cells = Math.Min(detail.Variants * perVariant, Math.Min(perEdge * perEdge, byBytes));
+            var variants = Math.Max(1, cells / perVariant);
+            cells = variants * perVariant;
 
-            var columns = Math.Min(perEdge, (int)Math.Ceiling(Math.Sqrt(variants)));
-            var rows = (variants + columns - 1) / columns;
+            var columns = Math.Min(perEdge, (int)Math.Ceiling(Math.Sqrt(cells)));
+            var rows = (cells + columns - 1) / columns;
 
             // A variant is an independent noise field plus a few hundred stroked paths, so the
             // pool builds across every core the machine has. This is what makes a pool of this
@@ -379,35 +455,65 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
 
             for (var v = 0; v < variants; v++)
             {
-                var originX = v % columns * cell;
-                var originY = v / columns * cell;
+                PlaceCell(canvas, tiles[v], v * perVariant, columns, cell, tileSize, mirrored: false);
 
-                canvas.Save();
-                canvas.ClipRect(SKRect.Create(originX, originY, cell, cell));
+                if (detail.Mirrored)
+                    PlaceCell(canvas, tiles[v], v * perVariant + 1, columns, cell, tileSize, mirrored: true);
 
-                // The gutter is filled by wrapping and not by smearing the edge pixels: a
-                // variant is built to tile against itself, so what belongs just off its left
-                // edge is exactly what sits inside its right one. Eight of these nine copies
-                // are clipped down to a one-pixel sliver, so the cost is nominal.
-                for (var dx = -tileSize; dx <= tileSize; dx += tileSize)
-                {
-                    for (var dy = -tileSize; dy <= tileSize; dy += tileSize)
-                        canvas.DrawImage(tiles[v], originX + Gutter + dx, originY + Gutter + dy);
-                }
-
-                canvas.Restore();
                 tiles[v].Dispose();
             }
 
             return new VariantAtlas
             {
                 Image = surface.Snapshot(),
-                Variants = variants,
+                Cells = cells,
                 Columns = columns,
                 TileSize = tileSize,
                 Cell = cell,
                 Bytes = 4L * info.Width * info.Height,
             };
+        }
+
+        /// <summary>
+        /// Writes one variant into one atlas cell, mirrored or not, with its gutter filled.
+        /// </summary>
+        private static void PlaceCell(
+            SKCanvas canvas,
+            SKImage tile,
+            int index,
+            int columns,
+            int cell,
+            int tileSize,
+            bool mirrored)
+        {
+            var originX = index % columns * cell;
+            var originY = index / columns * cell;
+
+            canvas.Save();
+            canvas.ClipRect(SKRect.Create(originX, originY, cell, cell));
+
+            if (mirrored)
+            {
+                // Reflect about the cell's right edge, so local x runs back across the cell.
+                canvas.Translate(originX + Gutter + tileSize, originY + Gutter);
+                canvas.Scale(-1f, 1f);
+            }
+            else
+            {
+                canvas.Translate(originX + Gutter, originY + Gutter);
+            }
+
+            // The gutter is filled by wrapping and not by smearing the edge pixels: a variant
+            // is built to tile against itself, so what belongs just off its left edge is
+            // exactly what sits inside its right one. Eight of these nine copies are clipped
+            // down to a one-pixel sliver, so the cost is nominal.
+            for (var dx = -tileSize; dx <= tileSize; dx += tileSize)
+            {
+                for (var dy = -tileSize; dy <= tileSize; dy += tileSize)
+                    canvas.DrawImage(tile, dx, dy);
+            }
+
+            canvas.Restore();
         }
 
         // ---- tone field ----------------------------------------------------------
