@@ -10,4 +10,8 @@
     <ProjectReference Include="..\NWorld.Map\NWorld.Map.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="MapRenderComponents\RenderingFunctions\" />
+  </ItemGroup>
+
 </Project>
