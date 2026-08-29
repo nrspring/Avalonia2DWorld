@@ -88,6 +88,12 @@ namespace NWorld.MapServices.Renderers
                     if (component is null)
                         continue;
 
+                    // Empty is the default type and means the layer is unoccupied. Dropped
+                    // here rather than dispatched to a renderer that draws nothing, so a
+                    // sparsely populated map does not build batches it will never draw.
+                    if (component.ComponentType == MapRenderComponentConstants.Empty)
+                        continue;
+
                     Add(layer, component.ComponentType, new TilePlacement(tile.X, tile.Y, component.Params));
                 }
             }
