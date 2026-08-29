@@ -4,7 +4,7 @@ using System.Text;
 
 namespace NWorld.Map.Models
 {
-    internal class MapRenderComponent
+    public class MapRenderComponent
     {
         public required Guid ComponentType { get;set;}
         public string[] Params { get; set;} = [];
