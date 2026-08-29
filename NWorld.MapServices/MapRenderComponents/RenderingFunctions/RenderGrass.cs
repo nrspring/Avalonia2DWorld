@@ -20,20 +20,19 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
     /// off the tile edge, and all the broad variation is left to the tone field, which is
     /// continuous across tiles by construction.
     /// </para>
+    /// <para>
+    /// How much of that a tile actually gets scales with its size -- see <see cref="DetailFor"/>.
+    /// A zoomed-out view draws far more tiles per frame with far fewer pixels each, so the
+    /// small sizes drop the passes that would not survive being shrunk anyway.
+    /// </para>
     /// </summary>
     public static class RenderGrass
     {
         private const uint Seed = 0x6A5F1D3Bu;
 
-        // Number of distinct pre-rendered tiles. Each can also be mirrored, so the map shows
-        // up to VariantCount * 2 different patches of grass before the pattern repeats.
-        // This is the warm-up knob: every variant is built on first use, so raising it buys
-        // variety at the cost of a longer first paint.
-        private const int VariantCount = 64;
-
         // Cached tiles are cheap (tileSize^2 * 4 bytes) but the tile size changes when the
         // view zooms, so drop everything once we are holding an unreasonable number.
-        private const int MaxCachedTiles = VariantCount * 8;
+        private const int MaxCachedTiles = 512;
 
         // Noise lattice sizes, in cells per tile. Each field wraps at the tile edge, so a
         // tile is seamless against a copy of itself -- but two *different* variants still
@@ -66,13 +65,47 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         private static readonly SKColor BladeLight = new(0x9E, 0xC6, 0x66);
         private static readonly SKColor FlowerPale = new(0xE8, 0xE4, 0xB8);
 
+        /// <summary>
+        /// How much work one tile is worth at a given size. Zooming out puts far more tiles on
+        /// screen with far fewer pixels each, so rather than draw detail nobody can resolve,
+        /// small tiles drop the expensive passes and draw from a smaller pool of variants.
+        /// </summary>
+        /// <param name="Variants">
+        /// Size of the variant pool. Each variant is also mirrored, so the map repeats after
+        /// twice this many tiles -- and every variant is built on first use, which makes this
+        /// the main lever on how long a first paint takes.
+        /// </param>
+        /// <param name="Tufted">
+        /// Whether blades are gathered into clumps with shadows under them and the odd flower,
+        /// or the tile is just a mottled mat with a few strays over it.
+        /// </param>
+        private readonly record struct DetailLevel(
+            int Variants,
+            int GroundOctaves,
+            int PatchOctaves,
+            bool Tufted);
+
+        private static DetailLevel DetailFor(int tileSize) => tileSize switch
+        {
+            // A blade is about a pixel here, so clumping it and casting a shadow under it only
+            // muddies the result -- a mottled mat with a little speckle reads better and skips
+            // most of the build. The tufts are also what make one tile tellable from another,
+            // so with them gone there is little left to repeat and a small pool does.
+            < 16 => new DetailLevel(Variants: 16, GroundOctaves: 2, PatchOctaves: 1, Tufted: false),
+
+            // Full treatment from here up; only the pool keeps growing with the tile size.
+            < 32 => new DetailLevel(Variants: 32, GroundOctaves: 3, PatchOctaves: 2, Tufted: true),
+
+            _ => new DetailLevel(Variants: 64, GroundOctaves: 3, PatchOctaves: 2, Tufted: true),
+        };
+
         public static Task Render(SKCanvas canvas, int tileSize, int x, int y)
         {
             if (canvas is null || tileSize <= 0)
                 return Task.CompletedTask;
 
             var hash = Hash(x, y, Seed);
-            var variant = (int)(hash % VariantCount);
+            var variant = (int)(hash % (uint)DetailFor(tileSize).Variants);
             var mirrored = ((hash >> 20) & 1u) == 1u;
 
             var tile = GetTile(tileSize, variant);
@@ -171,35 +204,45 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
                     SKShaderTileMode.Repeat,
                     SKMatrix.CreateScale(size, size)),
                 BlendMode = SKBlendMode.Overlay,
-                FilterQuality = SKFilterQuality.High,
+                FilterQuality = SKFilterQuality.Low,
                 IsAntialias = false,
             });
 
         private static SKImage GetTile(int tileSize, int variant)
         {
+            var key = (tileSize, variant);
+            if (Cache.TryGetValue(key, out var cached))
+                return cached;
+
+            // Only reached on a miss. ConcurrentDictionary.Count takes every one of the
+            // dictionary's locks, so it must not sit on the path a zoomed-out frame walks
+            // thousands of times.
             if (Cache.Count > MaxCachedTiles)
                 ClearCache();
 
-            return Cache.GetOrAdd((tileSize, variant), static key => BuildTile(key.TileSize, key.Variant));
+            return Cache.GetOrAdd(key, static k => BuildTile(k.TileSize, k.Variant));
         }
 
         private static SKImage BuildTile(int tileSize, int variant)
         {
             var seed = Hash(variant, variant * 31 + 7, Seed);
+            var detail = DetailFor(tileSize);
 
             var info = new SKImageInfo(tileSize, tileSize, SKColorType.Rgba8888, SKAlphaType.Premul);
             using var surface = SKSurface.Create(info);
             var canvas = surface.Canvas;
 
-            PaintGround(canvas, tileSize, seed);
-            PaintBlades(canvas, tileSize, seed);
-            PaintDetails(canvas, tileSize, seed);
+            PaintGround(canvas, tileSize, seed, detail);
+            PaintBlades(canvas, tileSize, seed, detail);
+
+            if (detail.Tufted)
+                PaintDetails(canvas, tileSize, seed);
 
             return surface.Snapshot();
         }
 
         /// <summary>Lays down the mottled ground out of a few octaves of value noise.</summary>
-        private static void PaintGround(SKCanvas canvas, int tileSize, uint seed)
+        private static void PaintGround(SKCanvas canvas, int tileSize, uint seed, DetailLevel detail)
         {
             // Filled as raw RGBA rather than through SKBitmap.Pixels, whose setter converts
             // pixel by pixel and costs more than the noise it would be carrying.
@@ -216,10 +259,10 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
 
                     // Both fields wrap at the tile edge. Keeping the largest feature well under
                     // a tile is what stops neighbouring tiles from showing a seam.
-                    var detail = PeriodicFbm(u, v, GroundPeriod, 3, seed);
-                    var patch = PeriodicFbm(u, v, PatchPeriod, 2, seed ^ 0x51A3u);
+                    var mottle = PeriodicFbm(u, v, GroundPeriod, detail.GroundOctaves, seed);
+                    var patch = PeriodicFbm(u, v, PatchPeriod, detail.PatchOctaves, seed ^ 0x51A3u);
 
-                    var color = LerpColor(GrassDark, GrassLight, 0.30f + detail * 0.55f + patch * 0.20f);
+                    var color = LerpColor(GrassDark, GrassLight, 0.30f + mottle * 0.55f + patch * 0.20f);
 
                     // Sun-bleached patches where the broad noise peaks.
                     color = LerpColor(color, GrassDry, Smoothstep(0.60f, 0.92f, patch) * 0.45f);
@@ -244,15 +287,19 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         /// height, with a few loose strays on top -- scattering them evenly instead reads as
         /// woven fabric rather than as grass.
         /// </summary>
-        private static void PaintBlades(SKCanvas canvas, int tileSize, uint seed)
+        private static void PaintBlades(SKCanvas canvas, int tileSize, uint seed, DetailLevel detail)
         {
             var rng = new Rng(seed ^ 0xB1ADE5u);
             var unit = tileSize / 32f;
-            var shadowOffset = Math.Max(0.5f, unit * 0.7f);
+
+            // Zero means the blades cast nothing, which is how the small sizes skip a whole
+            // draw per blade.
+            var shadowOffset = detail.Tufted ? Math.Max(0.5f, unit * 0.7f) : 0f;
+
             // Clumps are kept small relative to the tile. Features that approach tile size
             // make each tile read as one distinct tuft, and a grid of distinct tufts is
             // exactly the pattern this is trying to avoid.
-            var clumpCount = Math.Max(3, (int)(tileSize * tileSize / 170f));
+            var clumpCount = detail.Tufted ? Math.Max(3, (int)(tileSize * tileSize / 170f)) : 0;
 
             using var paint = new SKPaint
             {
@@ -272,7 +319,8 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
                 var clumpLean = rng.Range(-0.45f, 0.45f);
                 var blades = (int)rng.Range(7f, 16f);
 
-                DrawClumpShadow(canvas, clumpX, clumpY, spread, tileSize, shadowOffset);
+                if (shadowOffset > 0f)
+                    DrawClumpShadow(canvas, clumpX, clumpY, spread, tileSize, shadowOffset);
 
                 for (var b = 0; b < blades; b++)
                 {
@@ -285,8 +333,9 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
                 }
             }
 
-            // Strays, so the clumps do not read as discrete tufts.
-            var strays = Math.Max(6, (int)(tileSize * tileSize / 70f));
+            // Strays, so the clumps do not read as discrete tufts. With no clumps to fill the
+            // tile they have to carry it alone, so there are more of them.
+            var strays = Math.Max(6, (int)(tileSize * tileSize / (detail.Tufted ? 70f : 34f)));
             for (var i = 0; i < strays; i++)
             {
                 var baseX = rng.Range(0f, tileSize);
@@ -343,6 +392,7 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
                 : LerpColor(GrassMid, BladeLight, (tint - 0.35f) / 0.65f);
             var bladeColor = color.WithAlpha((byte)(140f + tint * 90f));
             var shadowColor = BladeShadow.WithAlpha(70);
+            var withShadow = shadowOffset > 0f;   // zero offset means this level draws no shadows
 
             // A blade that runs off one edge is drawn again coming in the opposite edge,
             // so the finished tile abuts itself (and any other variant) without a seam.
@@ -355,10 +405,13 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
                 canvas.Save();
                 canvas.Translate(dx, dy);
 
-                paint.Color = shadowColor;
-                canvas.Translate(0, shadowOffset);
-                canvas.DrawPath(path, paint);
-                canvas.Translate(0, -shadowOffset);
+                if (withShadow)
+                {
+                    paint.Color = shadowColor;
+                    canvas.Translate(0, shadowOffset);
+                    canvas.DrawPath(path, paint);
+                    canvas.Translate(0, -shadowOffset);
+                }
 
                 paint.Color = bladeColor;
                 canvas.DrawPath(path, paint);
