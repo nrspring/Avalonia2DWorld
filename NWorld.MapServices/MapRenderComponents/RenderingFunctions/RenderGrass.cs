@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using NWorld.Map.Models;
 using SkiaSharp;
+using static NWorld.MapServices.MapRenderComponents.RenderNoise;
 
 namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
 {
@@ -71,8 +72,6 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         private const int MaxAtlasEdge = 4096;
         private const long MaxAtlasBytes = 64L * 1024 * 1024;
         private const long MaxCacheBytes = 256L * 1024 * 1024;
-
-        private static readonly float[] OctavePhases = [0.37f, 0.71f, 0.13f, 0.59f];
 
         // Lazy, not the atlas itself: ConcurrentDictionary's factory can run on more than one
         // thread and keep only one result, which with Prewarm running alongside a repaint
@@ -245,37 +244,8 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         /// ground.
         /// </para>
         /// </summary>
-        private static void PaintMeadowTone(SKCanvas canvas, ReadOnlySpan<TilePlacement> tiles, int tileSize)
-        {
-            var paint = GetTonePaint(tileSize);
-
-            var runX = tiles[0].X;
-            var runY = tiles[0].Y;
-            var runLength = 1;
-
-            for (var i = 1; i < tiles.Length; i++)
-            {
-                var tile = tiles[i];
-
-                if (tile.Y == runY && tile.X == runX + runLength)
-                {
-                    runLength++;
-                    continue;
-                }
-
-                DrawRun(canvas, paint, runX, runY, runLength, tileSize);
-                runX = tile.X;
-                runY = tile.Y;
-                runLength = 1;
-            }
-
-            DrawRun(canvas, paint, runX, runY, runLength, tileSize);
-        }
-
-        private static void DrawRun(SKCanvas canvas, SKPaint paint, int x, int y, int length, int tileSize) =>
-            canvas.DrawRect(
-                SKRect.Create(x * tileSize, y * tileSize, length * tileSize, tileSize),
-                paint);
+        private static void PaintMeadowTone(SKCanvas canvas, ReadOnlySpan<TilePlacement> tiles, int tileSize) =>
+            TileRuns.Fill(canvas, tiles, tileSize, GetTonePaint(tileSize));
 
         /// <summary>
         /// Builds the atlas for <paramref name="tileSize"/> off the calling thread, so a zoom
@@ -876,126 +846,5 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             }
         }
 
-        // ---- deterministic noise -------------------------------------------------
-
-        /// <summary>
-        /// Stable 32-bit mix of two coordinates. Deliberately not GetHashCode: this has to
-        /// produce the same value across processes and runtimes.
-        /// </summary>
-        private static uint Hash(int x, int y, uint seed)
-        {
-            var h = seed + (uint)x * 0x9E3779B1u + (uint)y * 0x85EBCA77u;
-            h ^= h >> 15;
-            h *= 0x2C1B3C6Du;
-            h ^= h >> 12;
-            h *= 0x297A2D39u;
-            h ^= h >> 15;
-            return h;
-        }
-
-        private static float Hash01(int x, int y, uint seed) => (Hash(x, y, seed) >> 8) * (1f / 16777216f);
-
-        /// <summary>
-        /// Value noise on a lattice that repeats every <paramref name="period"/> cells, so a
-        /// field sampled over u,v in [0,1) has matching opposite edges.
-        /// </summary>
-        private static float PeriodicValueNoise(float x, float y, int period, uint seed)
-        {
-            var xi = (int)MathF.Floor(x);
-            var yi = (int)MathF.Floor(y);
-            var tx = Smoothstep(0f, 1f, x - xi);
-            var ty = Smoothstep(0f, 1f, y - yi);
-
-            int x0 = Wrap(xi, period), x1 = Wrap(xi + 1, period);
-            int y0 = Wrap(yi, period), y1 = Wrap(yi + 1, period);
-
-            var top = Lerp(Hash01(x0, y0, seed), Hash01(x1, y0, seed), tx);
-            var bottom = Lerp(Hash01(x0, y1, seed), Hash01(x1, y1, seed), tx);
-            return Lerp(top, bottom, ty);
-        }
-
-        /// <summary>Stacked octaves of <see cref="PeriodicValueNoise"/>; u and v are tile-relative (0..1).</summary>
-        private static float PeriodicFbm(float u, float v, int period, int octaves, uint seed)
-        {
-            float sum = 0f, amplitude = 0.5f, total = 0f;
-            for (var i = 0; i < octaves; i++)
-            {
-                // Shifting each octave off the lattice origin matters more than it looks.
-                // Unshifted, every octave has a lattice node exactly on the tile edge, where
-                // the noise takes its raw value instead of an interpolated one -- so the edge
-                // pixels have visibly different statistics from the interior and the map ends
-                // up with a faint grid drawn on it. The shift is a constant, so the field is
-                // still periodic and the tile still wraps.
-                var phase = OctavePhases[i % OctavePhases.Length] * period;
-                sum += PeriodicValueNoise(
-                    u * period + phase,
-                    v * period + phase * 0.63f,
-                    period,
-                    seed + (uint)i * 0x9E37u) * amplitude;
-
-                total += amplitude;
-                period *= 2;
-                amplitude *= 0.5f;
-            }
-            return sum / total;
-        }
-
-        private static int Wrap(int value, int period)
-        {
-            var m = value % period;
-            return m < 0 ? m + period : m;
-        }
-
-        // ---- small helpers -------------------------------------------------------
-
-        private static float Lerp(float a, float b, float t) => a + (b - a) * t;
-
-        private static float Clamp01(float v) => v < 0f ? 0f : v > 1f ? 1f : v;
-
-        private static float Smoothstep(float edge0, float edge1, float v)
-        {
-            var t = Clamp01((v - edge0) / (edge1 - edge0));
-            return t * t * (3f - 2f * t);
-        }
-
-        private static SKColor LerpColor(SKColor a, SKColor b, float t)
-        {
-            t = Clamp01(t);
-            return new SKColor(
-                (byte)(a.Red + (b.Red - a.Red) * t),
-                (byte)(a.Green + (b.Green - a.Green) * t),
-                (byte)(a.Blue + (b.Blue - a.Blue) * t));
-        }
-
-        private static SKColor Shade(SKColor color, float amount)
-        {
-            var factor = 1f + amount;
-            return new SKColor(
-                (byte)Clamp255(color.Red * factor),
-                (byte)Clamp255(color.Green * factor),
-                (byte)Clamp255(color.Blue * factor));
-        }
-
-        private static float Clamp255(float v) => v < 0f ? 0f : v > 255f ? 255f : v;
-
-        /// <summary>xorshift32: tiny, deterministic, and plenty for scattering blades.</summary>
-        private struct Rng
-        {
-            private uint _state;
-
-            public Rng(uint seed) => _state = seed == 0u ? 0x9E3779B9u : seed;
-
-            public uint NextUInt()
-            {
-                _state ^= _state << 13;
-                _state ^= _state >> 17;
-                _state ^= _state << 5;
-                return _state;
-            }
-
-            public float NextFloat() => (NextUInt() >> 8) * (1f / 16777216f);
-
-            public float Range(float min, float max) => min + (max - min) * NextFloat();
-        }
     }
 }
