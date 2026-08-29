@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using NWorld.Map.Models;
 using SkiaSharp;
@@ -11,8 +13,8 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
     /// <para>
     /// Everything is deterministic in (x, y): a tile looks the same on every repaint and
     /// across runs. A tile is drawn in two parts -- a pre-rendered texture chosen from a pool
-    /// of variants and cached per (tileSize, variant), then a broad tone taken from a coarse
-    /// map-space noise field. Drawing a tile that has been seen before is a blit plus a rect.
+    /// of variants, then a broad tone taken from a coarse map-space noise field. Drawing a
+    /// tile that has been seen before is a blit plus two rects.
     /// </para>
     /// <para>
     /// Keeping the grid invisible is the whole difficulty here, and it drives most of the
@@ -22,18 +24,14 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
     /// continuous across tiles by construction.
     /// </para>
     /// <para>
-    /// How much of that a tile actually gets scales with its size -- see <see cref="DetailFor"/>.
-    /// A zoomed-out view draws far more tiles per frame with far fewer pixels each, so the
-    /// small sizes drop the passes that would not survive being shrunk anyway.
+    /// The variants for one tile size live together in a single atlas image rather than one
+    /// image each -- see <see cref="VariantAtlas"/>. That is the one arrangement decision here
+    /// that a raster canvas is indifferent to and a GPU-backed one is not.
     /// </para>
     /// </summary>
     public static class RenderGrass
     {
         private const uint Seed = 0x6A5F1D3Bu;
-
-        // Cached tiles are cheap (tileSize^2 * 4 bytes) but the tile size changes when the
-        // view zooms, so drop everything once we are holding an unreasonable number.
-        private const int MaxCachedTiles = 512;
 
         // Noise lattice sizes, in cells per tile. Each field wraps at the tile edge, so a
         // tile is seamless against a copy of itself -- but two *different* variants still
@@ -52,11 +50,50 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         private const int ToneLattice = 12;
         private const int DryLattice = 6;
 
+        // A one-pixel skirt around each variant in the atlas, holding what wraps around from
+        // the opposite edge, so that sampling which strays past a cell finds the right pixels
+        // rather than the next variant's.
+        //
+        // Measured, it is currently doing nothing: with BlitPaint's nearest sampling Skia
+        // constrains reads to the source rect, and a map drawn with and without the skirt is
+        // bit-identical under sub-pixel panning and at 1.25x, 1.5x and 2x display scaling. It
+        // stays because that is an implementation detail rather than a promise, and because
+        // of how the two sides of the trade compare: a few per cent of atlas memory against a
+        // faint bright grid over the whole map, which is both the one artifact this file
+        // exists to prevent and a thoroughly confusing one to track back to here.
+        private const int Gutter = 1;
+
+        // Atlas ceilings. The edge cap keeps us inside every sane GL_MAX_TEXTURE_SIZE; the
+        // byte caps bound one zoom level and the cache as a whole. All three are sized for a
+        // discrete GPU with memory to spare -- on a machine without one they want to come
+        // down by roughly an order of magnitude, together with the pools in DetailFor.
+        private const int MaxAtlasEdge = 4096;
+        private const long MaxAtlasBytes = 64L * 1024 * 1024;
+        private const long MaxCacheBytes = 256L * 1024 * 1024;
+
         private static readonly float[] OctavePhases = [0.37f, 0.71f, 0.13f, 0.59f];
 
-        private static readonly ConcurrentDictionary<(int TileSize, int Variant), SKImage> Cache = new();
+        // Lazy, not the atlas itself: ConcurrentDictionary's factory can run on more than one
+        // thread and keep only one result, which with Prewarm running alongside a repaint
+        // would mean two full pool builds, a leaked image, and a byte count that never
+        // matches what is actually held. A Lazy that loses the race is simply never forced.
+        private static readonly ConcurrentDictionary<int, Lazy<VariantAtlas>> Atlases = new();
+        private static long _cacheBytes;
+
         private static readonly ConcurrentDictionary<int, SKPaint> TonePaints = new();
-        private static readonly Lazy<SKBitmap> ToneField = new(BuildToneField, isThreadSafe: true);
+        private static readonly Lazy<SKImage> ToneField = new(BuildToneField, isThreadSafe: true);
+
+        // Blur is the most expensive thing in a variant build and a mask filter is immutable
+        // once made, so clumps wanting a similar sigma share one instead of each allocating.
+        private static readonly ConcurrentDictionary<int, SKMaskFilter> BlurFilters = new();
+
+        // Nearest sampling: the atlas is always blitted at 1:1, so filtering would only
+        // soften it. Read-only after construction, hence safe to share across draws.
+        private static readonly SKPaint BlitPaint = new()
+        {
+            FilterQuality = SKFilterQuality.None,
+            IsAntialias = false,
+        };
 
         private static readonly SKColor GrassDark = new(0x39, 0x63, 0x2C);
         private static readonly SKColor GrassMid = new(0x5C, 0x8B, 0x3B);
@@ -67,14 +104,15 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         private static readonly SKColor FlowerPale = new(0xE8, 0xE4, 0xB8);
 
         /// <summary>
-        /// How much work one tile is worth at a given size. Zooming out puts far more tiles on
-        /// screen with far fewer pixels each, so rather than draw detail nobody can resolve,
-        /// small tiles drop the expensive passes and draw from a smaller pool of variants.
+        /// How much work one tile is worth at a given size, and how many different tiles the
+        /// view is worth holding.
         /// </summary>
         /// <param name="Variants">
-        /// Size of the variant pool. Each variant is also mirrored, so the map repeats after
-        /// twice this many tiles -- and every variant is built on first use, which makes this
-        /// the main lever on how long a first paint takes.
+        /// Size of the variant pool. Each variant is also mirrored, so the ground repeats
+        /// after twice this many tiles. The pool peaks in the middle of the zoom range rather
+        /// than at the top of it: repetition is what you notice when a screenful is thousands
+        /// of tiles, whereas by the time a tile is 128px only a few dozen fit on a monitor,
+        /// where a big pool buys nothing and costs a big atlas.
         /// </param>
         /// <param name="Tufted">
         /// Whether blades are gathered into clumps with shadows under them and the odd flower,
@@ -89,14 +127,16 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         private static DetailLevel DetailFor(int tileSize) => tileSize switch
         {
             // A blade is about a pixel here, so clumping it and casting a shadow under it only
-            // muddies the result -- a mottled mat with a little speckle reads better and skips
-            // most of the build. The tufts are also what make one tile tellable from another,
-            // so with them gone there is little left to repeat and a small pool does.
-            < 16 => new DetailLevel(Variants: 16, GroundOctaves: 2, PatchOctaves: 1, Tufted: false),
+            // muddies the result -- a mottled mat with a little speckle reads better. The
+            // octave counts are cut for the same reason rather than to save time: at this size
+            // a third octave's cells are already under a pixel across, so it would contribute
+            // aliasing and not detail.
+            < 16 => new DetailLevel(Variants: 64, GroundOctaves: 2, PatchOctaves: 1, Tufted: false),
 
-            // Full treatment from here up; only the pool keeps growing with the tile size.
-            < 32 => new DetailLevel(Variants: 32, GroundOctaves: 3, PatchOctaves: 2, Tufted: true),
-
+            // Full treatment from here up.
+            < 32 => new DetailLevel(Variants: 192, GroundOctaves: 3, PatchOctaves: 2, Tufted: true),
+            < 64 => new DetailLevel(Variants: 256, GroundOctaves: 3, PatchOctaves: 2, Tufted: true),
+            < 128 => new DetailLevel(Variants: 128, GroundOctaves: 3, PatchOctaves: 2, Tufted: true),
             _ => new DetailLevel(Variants: 64, GroundOctaves: 3, PatchOctaves: 2, Tufted: true),
         };
 
@@ -113,24 +153,35 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             if (canvas is null || tileSize <= 0)
                 return Task.CompletedTask;
 
+            var atlas = GetAtlas(tileSize);
+
             var hash = Hash(x, y, Seed);
-            var variant = (int)(hash % (uint)DetailFor(tileSize).Variants);
+            var variant = (int)(hash % (uint)atlas.Variants);
             var mirrored = ((hash >> 20) & 1u) == 1u;
 
-            var tile = GetTile(tileSize, variant);
+            var source = atlas.Source(variant);
 
-            canvas.Save();
             if (mirrored)
             {
-                canvas.Translate((x + 1) * tileSize, y * tileSize);
+                // Reflecting about the y axis sends local x to -x on the device, so the
+                // destination goes in negated and the tile lands where it would have anyway.
+                canvas.Save();
                 canvas.Scale(-1f, 1f);
+                canvas.DrawImage(
+                    atlas.Image,
+                    source,
+                    SKRect.Create(-(x + 1) * tileSize, y * tileSize, tileSize, tileSize),
+                    BlitPaint);
+                canvas.Restore();
             }
             else
             {
-                canvas.Translate(x * tileSize, y * tileSize);
+                canvas.DrawImage(
+                    atlas.Image,
+                    source,
+                    SKRect.Create(x * tileSize, y * tileSize, tileSize, tileSize),
+                    BlitPaint);
             }
-            canvas.DrawImage(tile, 0, 0);
-            canvas.Restore();
 
             PaintMeadowTone(canvas, tileSize, x, y);
 
@@ -138,9 +189,35 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         }
 
         /// <summary>
+        /// Builds the atlas for <paramref name="tileSize"/> off the calling thread, so a zoom
+        /// control can have the next level ready before the view arrives at it. Drawing at a
+        /// size that was never prewarmed still works; it just pays for the build in the frame
+        /// that first asks for it.
+        /// </summary>
+        public static Task Prewarm(int tileSize) =>
+            tileSize <= 0 ? Task.CompletedTask : Task.Run(() => GetAtlas(tileSize));
+
+        /// <summary>
         /// Shades the tile against a coarse noise field sampled in map space, one texel per
         /// tile and filtered smoothly, so the map gets lighter and darker stretches that run
         /// across tile boundaries instead of stopping at them.
+        /// <para>
+        /// This is the one draw per tile that a GPU backend cannot make cheap. Overlay is one
+        /// of Skia's advanced blend modes, and unless the driver advertises advanced blend
+        /// equations -- the ANGLE/D3D path a Windows app usually lands on does not -- the GPU
+        /// backend implements it by reading the destination back. It survives here anyway
+        /// because the obvious replacement does not work: Skia branches Overlay on the
+        /// *destination*, so no fixed source can reproduce it with coefficient modes.
+        /// Multiplying by min(2s, 1) and then screening with max(2s - 1, 0) -- which is exact
+        /// if the branch is on the source -- comes out a mean of 10/255 and a peak of 87/255
+        /// away from it across the grass palette, which is a plainly different ground.
+        /// </para>
+        /// <para>
+        /// The cost is bounded by tile count, so if it ever shows up in a profile the fix is
+        /// to stop drawing it per tile: one Overlay rect can cover a whole run of adjacent
+        /// grass tiles. That needs the renderer to hand this function a run rather than a
+        /// tile, so it is a change to <see cref="IMapRenderer"/>'s shape and not to this file.
+        /// </para>
         /// </summary>
         private static void PaintMeadowTone(SKCanvas canvas, int tileSize, int x, int y) =>
             canvas.DrawRect(
@@ -148,15 +225,20 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
                 GetTonePaint(tileSize));
 
         /// <summary>
-        /// Drops every cached tile and tone paint; they are rebuilt on the next draw. Worth
+        /// Drops every cached atlas and tone paint; they are rebuilt on the next draw. Worth
         /// calling if the palette changes, or to release memory after a long zoom session.
+        /// Not safe to call while a frame is in flight -- it disposes images that frame may
+        /// still be drawing from.
         /// </summary>
         public static void ClearCache()
         {
-            foreach (var key in Cache.Keys)
+            foreach (var key in Atlases.Keys)
             {
-                if (Cache.TryRemove(key, out var image))
-                    image.Dispose();
+                if (Atlases.TryRemove(key, out var atlas) && atlas.IsValueCreated)
+                {
+                    Interlocked.Add(ref _cacheBytes, -atlas.Value.Bytes);
+                    atlas.Value.Dispose();
+                }
             }
 
             foreach (var key in TonePaints.Keys)
@@ -169,15 +251,180 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             }
         }
 
+        // ---- variant atlas -------------------------------------------------------
+
+        /// <summary>
+        /// Every variant for one tile size, packed into a single image on a padded grid.
+        /// <para>
+        /// One image per variant is the obvious arrangement, and on a raster canvas it is a
+        /// perfectly good one: a blit is a memcpy and it makes no difference which buffer it
+        /// came from. On a GPU-backed canvas it is close to the worst arrangement available.
+        /// Neighbouring tiles nearly always draw different variants, so the bound texture
+        /// changes between them, no two consecutive tiles can be batched, and a zoomed-out
+        /// frame becomes five figures of draw calls. Sharing one texture across the whole
+        /// pool lets Skia merge long runs of tiles into a handful of batches, and bounds the
+        /// working set to one texture per zoom level rather than hundreds.
+        /// </para>
+        /// </summary>
+        private sealed class VariantAtlas : IDisposable
+        {
+            public required SKImage Image { get; init; }
+            public required int Variants { get; init; }
+            public required int Columns { get; init; }
+            public required int TileSize { get; init; }
+
+            /// <summary>Grid pitch: the tile plus its gutter on either side.</summary>
+            public required int Cell { get; init; }
+
+            public required long Bytes { get; init; }
+
+            /// <summary>
+            /// Wall-clock stamp of the last draw, for eviction order. Written without
+            /// synchronisation from the per-tile path; a lost update costs nothing worse than
+            /// a slightly stale eviction order.
+            /// </summary>
+            public long LastUsed;
+
+            public SKRect Source(int variant)
+            {
+                var column = variant % Columns;
+                var row = variant / Columns;
+                return SKRect.Create(
+                    column * Cell + Gutter,
+                    row * Cell + Gutter,
+                    TileSize,
+                    TileSize);
+            }
+
+            public void Dispose() => Image.Dispose();
+        }
+
+        private static VariantAtlas GetAtlas(int tileSize)
+        {
+            if (Atlases.TryGetValue(tileSize, out var cached) && cached.IsValueCreated)
+            {
+                cached.Value.LastUsed = Environment.TickCount64;
+                return cached.Value;
+            }
+
+            var lazy = Atlases.GetOrAdd(tileSize, static size => new Lazy<VariantAtlas>(() =>
+            {
+                var built = BuildAtlas(size);
+                Interlocked.Add(ref _cacheBytes, built.Bytes);
+                return built;
+            }, LazyThreadSafetyMode.ExecutionAndPublication));
+
+            var atlas = lazy.Value;
+            atlas.LastUsed = Environment.TickCount64;
+            Trim(keep: tileSize);
+            return atlas;
+        }
+
+        /// <summary>
+        /// Evicts least-recently-drawn zoom levels until the cache is back inside its budget.
+        /// Only ever runs just after a build, never on the per-tile path, and never touches
+        /// the size that build was for -- which is the size the caller is about to draw.
+        /// </summary>
+        private static void Trim(int keep)
+        {
+            if (Interlocked.Read(ref _cacheBytes) <= MaxCacheBytes)
+                return;
+
+            // Anything still building is skipped rather than waited on: forcing a half-built
+            // Lazy here would block this thread on a pool it is about to throw away.
+            var candidates = Atlases
+                .Where(entry => entry.Key != keep && entry.Value.IsValueCreated)
+                .OrderBy(entry => entry.Value.Value.LastUsed)
+                .Select(entry => entry.Key)
+                .ToList();
+
+            foreach (var size in candidates)
+            {
+                if (Interlocked.Read(ref _cacheBytes) <= MaxCacheBytes)
+                    return;
+
+                if (Atlases.TryRemove(size, out var victim) && victim.IsValueCreated)
+                {
+                    Interlocked.Add(ref _cacheBytes, -victim.Value.Bytes);
+                    victim.Value.Dispose();
+                }
+            }
+        }
+
+        private static VariantAtlas BuildAtlas(int tileSize)
+        {
+            var detail = DetailFor(tileSize);
+            var cell = tileSize + Gutter * 2;
+
+            // Trim the pool to what fits rather than refusing to draw. Both caps only bite at
+            // the large tile sizes, where the pool is deliberately small to begin with.
+            var perEdge = Math.Max(1, MaxAtlasEdge / cell);
+            var byBytes = Math.Max(1, (int)(MaxAtlasBytes / (4L * cell * cell)));
+            var variants = Math.Min(detail.Variants, Math.Min(perEdge * perEdge, byBytes));
+
+            var columns = Math.Min(perEdge, (int)Math.Ceiling(Math.Sqrt(variants)));
+            var rows = (variants + columns - 1) / columns;
+
+            // A variant is an independent noise field plus a few hundred stroked paths, so the
+            // pool builds across every core the machine has. This is what makes a pool of this
+            // size affordable at all: it is the entire first-paint cost of a zoom level, and
+            // built one at a time it would be a visible stall on every zoom step.
+            var tiles = new SKImage[variants];
+            Parallel.For(0, variants, v => tiles[v] = BuildTile(tileSize, v));
+
+            var info = new SKImageInfo(columns * cell, rows * cell, SKColorType.Rgba8888, SKAlphaType.Premul);
+            using var surface = SKSurface.Create(info);
+            var canvas = surface.Canvas;
+            canvas.Clear(SKColors.Transparent);
+
+            for (var v = 0; v < variants; v++)
+            {
+                var originX = v % columns * cell;
+                var originY = v / columns * cell;
+
+                canvas.Save();
+                canvas.ClipRect(SKRect.Create(originX, originY, cell, cell));
+
+                // The gutter is filled by wrapping and not by smearing the edge pixels: a
+                // variant is built to tile against itself, so what belongs just off its left
+                // edge is exactly what sits inside its right one. Eight of these nine copies
+                // are clipped down to a one-pixel sliver, so the cost is nominal.
+                for (var dx = -tileSize; dx <= tileSize; dx += tileSize)
+                {
+                    for (var dy = -tileSize; dy <= tileSize; dy += tileSize)
+                        canvas.DrawImage(tiles[v], originX + Gutter + dx, originY + Gutter + dy);
+                }
+
+                canvas.Restore();
+                tiles[v].Dispose();
+            }
+
+            return new VariantAtlas
+            {
+                Image = surface.Snapshot(),
+                Variants = variants,
+                Columns = columns,
+                TileSize = tileSize,
+                Cell = cell,
+                Bytes = 4L * info.Width * info.Height,
+            };
+        }
+
+        // ---- tone field ----------------------------------------------------------
+
         /// <summary>
         /// The coarse map-space tone field, one texel per tile. Neutral grey is a no-op under
-        /// SKBlendMode.Overlay, so texels either side of it darken or lighten the ground.
+        /// <see cref="SKBlendMode.Overlay"/>, so texels either side of it darken or lighten
+        /// the ground.
         /// </summary>
-        private static SKBitmap BuildToneField()
+        private static SKImage BuildToneField()
         {
-            var bitmap = new SKBitmap(new SKImageInfo(TonePeriod, TonePeriod, SKColorType.Rgba8888, SKAlphaType.Opaque));
-            var pixels = new SKColor[TonePeriod * TonePeriod];
+            // Built as raw RGBA and handed to SKImage rather than kept as an SKBitmap: the
+            // shader below wants an immutable, uploadable image, and a bitmap-backed shader
+            // leaves the GPU backend re-checking a mutable source it can never cache well.
+            var pixels = new byte[TonePeriod * TonePeriod * 4];
             var scale = 1f / TonePeriod;
+            var i = 0;
 
             for (var ty = 0; ty < TonePeriod; ty++)
             {
@@ -187,15 +434,16 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
                     var dry = PeriodicFbm(tx * scale, ty * scale, DryLattice, 2, Seed ^ 0xD47Au);
 
                     var level = 128f + (n - 0.5f) * 2f * ToneStrength;
-                    pixels[ty * TonePeriod + tx] = new SKColor(
-                        (byte)Clamp255(level + dry * 10f),
-                        (byte)Clamp255(level + 2f),
-                        (byte)Clamp255(level - dry * 12f));
+
+                    pixels[i++] = (byte)Clamp255(level + dry * 10f);
+                    pixels[i++] = (byte)Clamp255(level + 2f);
+                    pixels[i++] = (byte)Clamp255(level - dry * 12f);
+                    pixels[i++] = 0xFF;
                 }
             }
 
-            bitmap.Pixels = pixels;
-            return bitmap;
+            var info = new SKImageInfo(TonePeriod, TonePeriod, SKColorType.Rgba8888, SKAlphaType.Opaque);
+            return SKImage.FromPixelCopy(info, pixels);
         }
 
         /// <summary>
@@ -207,7 +455,7 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             {
                 // One texel per tile, so a tile samples its own texel centre and blends
                 // smoothly towards its neighbours' rather than stopping at the edge.
-                Shader = SKShader.CreateBitmap(
+                Shader = SKShader.CreateImage(
                     ToneField.Value,
                     SKShaderTileMode.Repeat,
                     SKShaderTileMode.Repeat,
@@ -217,20 +465,7 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
                 IsAntialias = false,
             });
 
-        private static SKImage GetTile(int tileSize, int variant)
-        {
-            var key = (tileSize, variant);
-            if (Cache.TryGetValue(key, out var cached))
-                return cached;
-
-            // Only reached on a miss. ConcurrentDictionary.Count takes every one of the
-            // dictionary's locks, so it must not sit on the path a zoomed-out frame walks
-            // thousands of times.
-            if (Cache.Count > MaxCachedTiles)
-                ClearCache();
-
-            return Cache.GetOrAdd(key, static k => BuildTile(k.TileSize, k.Variant));
-        }
+        // ---- one variant ---------------------------------------------------------
 
         private static SKImage BuildTile(int tileSize, int variant)
         {
@@ -319,6 +554,17 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             };
             using var path = new SKPath();
 
+            // Hoisted out of the clump loop: a fresh paint per clump is a native allocation
+            // for every one of the pool's tens of thousands of tufts.
+            using var shadowPaint = clumpCount > 0
+                ? new SKPaint
+                {
+                    IsAntialias = true,
+                    Style = SKPaintStyle.Fill,
+                    Color = BladeShadow.WithAlpha(38),
+                }
+                : null;
+
             for (var c = 0; c < clumpCount; c++)
             {
                 var clumpX = rng.Range(0f, tileSize);
@@ -328,8 +574,8 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
                 var clumpLean = rng.Range(-0.45f, 0.45f);
                 var blades = (int)rng.Range(7f, 16f);
 
-                if (shadowOffset > 0f)
-                    DrawClumpShadow(canvas, clumpX, clumpY, spread, tileSize, shadowOffset);
+                if (shadowOffset > 0f && shadowPaint is not null)
+                    DrawClumpShadow(canvas, shadowPaint, clumpX, clumpY, spread, tileSize, shadowOffset);
 
                 for (var b = 0; b < blades; b++)
                 {
@@ -357,15 +603,16 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         }
 
         /// <summary>A soft dark pool under a clump, so the tuft sits in the ground instead of on it.</summary>
-        private static void DrawClumpShadow(SKCanvas canvas, float cx, float cy, float spread, int tileSize, float shadowOffset)
+        private static void DrawClumpShadow(
+            SKCanvas canvas,
+            SKPaint paint,
+            float cx,
+            float cy,
+            float spread,
+            int tileSize,
+            float shadowOffset)
         {
-            using var paint = new SKPaint
-            {
-                IsAntialias = true,
-                Style = SKPaintStyle.Fill,
-                Color = BladeShadow.WithAlpha(38),
-                MaskFilter = SKMaskFilter.CreateBlur(SKBlurStyle.Normal, spread * 0.45f),
-            };
+            paint.MaskFilter = GetBlur(spread * 0.45f);
 
             var rect = SKRect.Create(cx - spread, cy - spread * 0.5f + shadowOffset, spread * 2f, spread);
 
@@ -374,8 +621,19 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             var bounds = rect;
             bounds.Inflate(spread * 1.5f, spread * 1.5f);
 
-            foreach (var (dx, dy) in WrapOffsets(bounds, tileSize))
+            foreach (var (dx, dy) in new WrapOffsets(bounds, tileSize))
                 canvas.DrawOval(SKRect.Create(rect.Left + dx, rect.Top + dy, rect.Width, rect.Height), paint);
+        }
+
+        /// <summary>
+        /// A blur for roughly <paramref name="sigma"/>, shared by every clump that rounds to
+        /// the same quarter pixel. Mask filters are immutable, so one is safe to hand to all
+        /// of the build threads at once.
+        /// </summary>
+        private static SKMaskFilter GetBlur(float sigma)
+        {
+            var key = Math.Max(1, (int)MathF.Round(sigma * 4f));
+            return BlurFilters.GetOrAdd(key, static k => SKMaskFilter.CreateBlur(SKBlurStyle.Normal, k / 4f));
         }
 
         private static void DrawBlade(
@@ -409,7 +667,7 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             bounds.Inflate(paint.StrokeWidth, paint.StrokeWidth);
             bounds.Bottom += shadowOffset;
 
-            foreach (var (dx, dy) in WrapOffsets(bounds, tileSize))
+            foreach (var (dx, dy) in new WrapOffsets(bounds, tileSize))
             {
                 canvas.Save();
                 canvas.Translate(dx, dy);
@@ -429,24 +687,55 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         }
 
         /// <summary>
-        /// Yields the tile-sized translations needed to draw <paramref name="bounds"/> wrapped
-        /// around the tile edges: always (0, 0), plus a copy for each edge the shape crosses.
+        /// The tile-sized translations needed to draw a shape wrapped around the tile edges:
+        /// always (0, 0), plus a copy for each edge the shape crosses.
+        /// <para>
+        /// A struct enumerator rather than an iterator method, because this is walked once per
+        /// blade and the pool draws millions of them; an iterator would put a heap allocation
+        /// behind every one of those.
+        /// </para>
         /// </summary>
-        private static IEnumerable<(float Dx, float Dy)> WrapOffsets(SKRect bounds, int tileSize)
+        private struct WrapOffsets
         {
-            for (var sx = -1; sx <= 1; sx++)
-            {
-                for (var sy = -1; sy <= 1; sy++)
-                {
-                    var shifted = SKRect.Create(
-                        bounds.Left + sx * tileSize,
-                        bounds.Top + sy * tileSize,
-                        bounds.Width,
-                        bounds.Height);
+            private readonly SKRect _bounds;
+            private readonly int _tileSize;
+            private int _index;
 
-                    if (shifted.IntersectsWith(SKRect.Create(0, 0, tileSize, tileSize)))
-                        yield return (sx * tileSize, sy * tileSize);
+            public WrapOffsets(SKRect bounds, int tileSize)
+            {
+                _bounds = bounds;
+                _tileSize = tileSize;
+                _index = -1;
+                Current = default;
+            }
+
+            public (float Dx, float Dy) Current { get; private set; }
+
+            public readonly WrapOffsets GetEnumerator() => this;
+
+            public bool MoveNext()
+            {
+                var tile = SKRect.Create(0, 0, _tileSize, _tileSize);
+
+                while (++_index < 9)
+                {
+                    float dx = (_index / 3 - 1) * _tileSize;
+                    float dy = (_index % 3 - 1) * _tileSize;
+
+                    var shifted = SKRect.Create(
+                        _bounds.Left + dx,
+                        _bounds.Top + dy,
+                        _bounds.Width,
+                        _bounds.Height);
+
+                    if (!shifted.IntersectsWith(tile))
+                        continue;
+
+                    Current = (dx, dy);
+                    return true;
                 }
+
+                return false;
             }
         }
 
@@ -476,7 +765,7 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
                     : GrassDry.WithAlpha(190);
 
                 var bounds = SKRect.Create(cx - radius, cy - radius, radius * 2f, radius * 2f);
-                foreach (var (dx, dy) in WrapOffsets(bounds, tileSize))
+                foreach (var (dx, dy) in new WrapOffsets(bounds, tileSize))
                     canvas.DrawCircle(cx + dx, cy + dy, radius, paint);
             }
         }
