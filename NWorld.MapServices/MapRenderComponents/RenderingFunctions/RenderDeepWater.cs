@@ -1,11 +1,12 @@
 using System.Threading.Tasks;
-using SkiaSharp;
+using NWorld.Map.Models;
 
 namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
 {
     public static class RenderDeepWater
     {
-        public static Task Render(SKCanvas canvas, int tileSize, int x, int y)
+        // Animated, like RenderWater: drive it from context.TimeSeconds.
+        public static Task Render(TileRenderContext context)
         {
             throw new System.NotImplementedException();
         }

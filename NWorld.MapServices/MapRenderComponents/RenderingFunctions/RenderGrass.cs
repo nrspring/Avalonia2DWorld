@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Threading.Tasks;
+using NWorld.Map.Models;
 using SkiaSharp;
 
 namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
@@ -99,8 +100,16 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             _ => new DetailLevel(Variants: 64, GroundOctaves: 3, PatchOctaves: 2, Tufted: true),
         };
 
-        public static Task Render(SKCanvas canvas, int tileSize, int x, int y)
+        /// <summary>
+        /// Grass does not animate, so <see cref="TileRenderContext.TimeSeconds"/> is ignored
+        /// and a tile stays cached across frames.
+        /// </summary>
+        public static Task Render(TileRenderContext context)
         {
+            var canvas = context.Canvas;
+            var tileSize = context.TileSize;
+            int x = context.X, y = context.Y;
+
             if (canvas is null || tileSize <= 0)
                 return Task.CompletedTask;
 
