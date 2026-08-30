@@ -41,8 +41,13 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty]
     private IReadOnlyList<MapTile> _tiles;
 
+    /// <summary>
+    /// How the map is drawn. Replaced rather than edited -- <c>Options = Options with
+    /// { TileSize = 8 }</c> -- which is both what makes it safe to read while a frame is in
+    /// flight and what tells the control to repaint.
+    /// </summary>
     [ObservableProperty]
-    private int _tileSize = 16;
+    private MapViewOptions _options = new() { TileSize = 16 };
 
     public MainWindowViewModel()
     {

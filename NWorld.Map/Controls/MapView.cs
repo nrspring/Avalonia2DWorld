@@ -54,11 +54,15 @@ namespace NWorld.Map.Controls
             AvaloniaProperty.Register<MapView, IMapRenderer?>(nameof(Renderer));
 
         /// <summary>
-        /// Tile width and height in pixels, i.e. the zoom level. A tile at (x, y) is drawn at
-        /// (x * TileSize, y * TileSize) from the control's top-left.
+        /// How to draw: tile size, whether to animate. See <see cref="MapViewOptions"/>.
+        /// <para>
+        /// Replaced, never edited -- the options are read while a frame is being drawn, and a
+        /// reference change is also what tells the control to repaint.
+        /// </para>
         /// </summary>
-        public static readonly StyledProperty<int> TileSizeProperty =
-            AvaloniaProperty.Register<MapView, int>(nameof(TileSize), defaultValue: 32);
+        public static readonly StyledProperty<MapViewOptions?> OptionsProperty =
+            AvaloniaProperty.Register<MapView, MapViewOptions?>(
+                nameof(Options), defaultValue: MapViewOptions.Default);
 
         /// <summary>
         /// Invoked with the <see cref="TileCoordinate"/> under the pointer when that tile
@@ -79,14 +83,6 @@ namespace NWorld.Map.Controls
         public static readonly StyledProperty<ICommand?> ClickCommandProperty =
             AvaloniaProperty.Register<MapView, ICommand?>(nameof(ClickCommand));
 
-        /// <summary>
-        /// Whether to repaint continuously. Animated components -- water above all -- move
-        /// with <see cref="RenderFrame.TimeSeconds"/> and are frozen without it. Turn it off
-        /// for a static map and the control repaints only when something it binds to changes.
-        /// </summary>
-        public static readonly StyledProperty<bool> IsAnimatedProperty =
-            AvaloniaProperty.Register<MapView, bool>(nameof(IsAnimated), defaultValue: true);
-
         // One clock for the control's whole life, sampled once per frame and handed to every
         // tile in it. Never a frame counter: that would tie animation speed to frame rate.
         private readonly Stopwatch _clock = Stopwatch.StartNew();
@@ -96,7 +92,7 @@ namespace NWorld.Map.Controls
 
         static MapView()
         {
-            AffectsRender<MapView>(TilesProperty, RendererProperty, TileSizeProperty, IsAnimatedProperty);
+            AffectsRender<MapView>(TilesProperty, RendererProperty, OptionsProperty);
         }
 
         public MapView()
@@ -120,11 +116,11 @@ namespace NWorld.Map.Controls
             set => SetValue(RendererProperty, value);
         }
 
-        /// <inheritdoc cref="TileSizeProperty"/>
-        public int TileSize
+        /// <inheritdoc cref="OptionsProperty"/>
+        public MapViewOptions? Options
         {
-            get => GetValue(TileSizeProperty);
-            set => SetValue(TileSizeProperty, value);
+            get => GetValue(OptionsProperty);
+            set => SetValue(OptionsProperty, value);
         }
 
         /// <inheritdoc cref="HoverCommandProperty"/>
@@ -141,13 +137,6 @@ namespace NWorld.Map.Controls
             set => SetValue(ClickCommandProperty, value);
         }
 
-        /// <inheritdoc cref="IsAnimatedProperty"/>
-        public bool IsAnimated
-        {
-            get => GetValue(IsAnimatedProperty);
-            set => SetValue(IsAnimatedProperty, value);
-        }
-
         /// <summary>The tile the pointer is over, or null when it is outside the control.</summary>
         public TileCoordinate? HoveredTile => _hovered;
 
@@ -157,9 +146,9 @@ namespace NWorld.Map.Controls
 
             var renderer = Renderer;
             var tiles = Tiles;
-            var tileSize = TileSize;
+            var options = Options ?? MapViewOptions.Default;
 
-            if (renderer is null || tiles is not { Count: > 0 } || tileSize <= 0 ||
+            if (renderer is null || tiles is not { Count: > 0 } ||
                 Bounds is not { Width: > 0, Height: > 0 })
             {
                 // Nothing to draw, so no frame to queue either -- an idle control should not
@@ -171,10 +160,10 @@ namespace NWorld.Map.Controls
             context.Custom(new MapDrawOperation(
                 new Rect(Bounds.Size),
                 renderer,
-                new RenderFrame(tileSize, (float)_clock.Elapsed.TotalSeconds),
+                new RenderFrame(options.TileSize, (float)_clock.Elapsed.TotalSeconds),
                 tiles));
 
-            RequestNextFrame();
+            RequestNextFrame(options);
         }
 
         protected override void OnPointerMoved(PointerEventArgs e)
@@ -196,8 +185,7 @@ namespace NWorld.Map.Controls
             if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
                 return;
 
-            if (ToTile(e.GetPosition(this)) is not { } tile)
-                return;
+            var tile = ToTile(e.GetPosition(this));
 
             // The pointer is over a tile whether or not a move was seen first -- a touch or a
             // pen never sends one -- so the hover is brought up to date before the click
@@ -217,12 +205,13 @@ namespace NWorld.Map.Controls
             SetHovered(null);
         }
 
-        /// <summary>Pixel position within the control to the tile that covers it.</summary>
-        private TileCoordinate? ToTile(Point position)
+        /// <summary>
+        /// Pixel position within the control to the tile that covers it. Never null --
+        /// <see cref="MapViewOptions.TileSize"/> refuses to be zero, so this cannot fail.
+        /// </summary>
+        private TileCoordinate ToTile(Point position)
         {
-            var tileSize = TileSize;
-            if (tileSize <= 0)
-                return null;
+            var tileSize = (Options ?? MapViewOptions.Default).TileSize;
 
             // Floor rather than a cast: a cast truncates towards zero, which would fold the
             // whole strip from -tileSize to +tileSize into column 0.
@@ -251,9 +240,9 @@ namespace NWorld.Map.Controls
         /// invalidation arriving between frames -- a property change, say -- does not stack a
         /// second request on top of the one already in flight.
         /// </summary>
-        private void RequestNextFrame()
+        private void RequestNextFrame(MapViewOptions options)
         {
-            if (!IsAnimated || _framePending)
+            if (!options.IsAnimated || _framePending)
                 return;
 
             if (TopLevel.GetTopLevel(this) is not { } topLevel)
