@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="NWorld.Map/NWorld.Map.csproj" Id="2a694bb1-90a3-4abb-8905-ebdeb24ad95b" />
   <Project Path="NWorld.MapServices/NWorld.MapServices.csproj" Id="644c33c7-3173-49e3-b60e-e82804f5d1ca" />
+  <Project Path="NWorld.Generation.App/NWorld.Generation.App.csproj" />
 </Solution>

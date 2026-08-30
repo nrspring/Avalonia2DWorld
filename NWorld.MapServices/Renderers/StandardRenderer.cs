@@ -94,7 +94,7 @@ namespace NWorld.MapServices.Renderers
                     if (component.ComponentType == MapRenderComponentConstants.Empty)
                         continue;
 
-                    Add(layer, component.ComponentType, new TilePlacement(tile.X, tile.Y, component.Params));
+                    Add(layer, component.ComponentType, new TilePlacement(tile.X, tile.Y, component.Params ?? []));
                 }
             }
         }

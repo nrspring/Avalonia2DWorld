@@ -11,5 +11,10 @@ namespace NWorld.Map.Models
         public int Y { get; set; }
         public int Elevation { get; set; }
         public Dictionary<int, MapRenderComponent> MapRenderComponents { get; set; } = [];
+
+        public void SetMapRenderComponent(int layer, MapRenderComponent component)
+        {
+            MapRenderComponents[layer] = component;
+        }
     }
 }

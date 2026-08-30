@@ -7,6 +7,6 @@ namespace NWorld.Map.Models
     public class MapRenderComponent
     {
         public required Guid ComponentType { get;set;}
-        public string[] Params { get; set;} = [];
+        public string[]? Params { get; set;}
     }
 }
