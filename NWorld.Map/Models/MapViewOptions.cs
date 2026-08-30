@@ -17,6 +17,8 @@ namespace NWorld.Map.Models
     public sealed record MapViewOptions
     {
         private readonly int _tileSize = 32;
+        private readonly int _miniMapSize = 160;
+        private readonly int _miniMapMargin = 12;
 
         /// <summary>The options a control gets when nothing is bound to it.</summary>
         public static MapViewOptions Default { get; } = new();
@@ -44,5 +46,42 @@ namespace NWorld.Map.Models
         /// for a static map and the control repaints only when something it binds to changes.
         /// </summary>
         public bool IsAnimated { get; init; } = true;
+
+        /// <summary>
+        /// Which corner the mini-map sits in, or <see cref="MiniMapLocation.Off"/> for none.
+        /// <para>
+        /// The mini-map is the whole tile list again at whatever scale fits the inset, so it
+        /// costs a second pass over the tiles and a second zoom level in the render caches.
+        /// At inset scale that level is small, and the caches evict by least-recently-drawn,
+        /// so the two sizes coexist rather than thrash.
+        /// </para>
+        /// </summary>
+        public MiniMapLocation MiniMap { get; init; } = MiniMapLocation.Off;
+
+        /// <summary>
+        /// Side of the mini-map inset in pixels. Square whatever the map's shape: the map is
+        /// letterboxed inside it, which keeps the inset's position independent of the tiles
+        /// and so cheap enough to work out on every pointer move.
+        /// </summary>
+        public int MiniMapSize
+        {
+            get => _miniMapSize;
+            init
+            {
+                ArgumentOutOfRangeException.ThrowIfNegativeOrZero(value);
+                _miniMapSize = value;
+            }
+        }
+
+        /// <summary>Gap between the mini-map inset and the two edges it is tucked against.</summary>
+        public int MiniMapMargin
+        {
+            get => _miniMapMargin;
+            init
+            {
+                ArgumentOutOfRangeException.ThrowIfNegative(value);
+                _miniMapMargin = value;
+            }
+        }
     }
 }

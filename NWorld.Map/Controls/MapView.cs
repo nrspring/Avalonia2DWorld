@@ -161,7 +161,8 @@ namespace NWorld.Map.Controls
                 new Rect(Bounds.Size),
                 renderer,
                 new RenderFrame(options.TileSize, (float)_clock.Elapsed.TotalSeconds),
-                tiles));
+                tiles,
+                MiniMapRect(Bounds.Size, options)));
 
             RequestNextFrame(options);
         }
@@ -185,7 +186,9 @@ namespace NWorld.Map.Controls
             if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
                 return;
 
-            var tile = ToTile(e.GetPosition(this));
+            // Null over the mini-map inset, where a click means nothing yet.
+            if (ToTile(e.GetPosition(this)) is not { } tile)
+                return;
 
             // The pointer is over a tile whether or not a move was seen first -- a touch or a
             // pen never sends one -- so the hover is brought up to date before the click
@@ -206,18 +209,57 @@ namespace NWorld.Map.Controls
         }
 
         /// <summary>
-        /// Pixel position within the control to the tile that covers it. Never null --
-        /// <see cref="MapViewOptions.TileSize"/> refuses to be zero, so this cannot fail.
+        /// Pixel position within the control to the tile that covers it, or null over the
+        /// mini-map inset.
         /// </summary>
-        private TileCoordinate ToTile(Point position)
+        private TileCoordinate? ToTile(Point position)
         {
-            var tileSize = (Options ?? MapViewOptions.Default).TileSize;
+            var options = Options ?? MapViewOptions.Default;
+
+            // The inset draws the whole map at its own scale, so this arithmetic would name
+            // the tile hidden *behind* it rather than the one being pointed at. Reporting
+            // nothing is honest; the inset becomes a way to navigate once there is a viewport
+            // to move.
+            if (MiniMapRect(Bounds.Size, options) is { } inset && inset.Contains(position))
+                return null;
 
             // Floor rather than a cast: a cast truncates towards zero, which would fold the
             // whole strip from -tileSize to +tileSize into column 0.
             return new TileCoordinate(
-                (int)Math.Floor(position.X / tileSize),
-                (int)Math.Floor(position.Y / tileSize));
+                (int)Math.Floor(position.X / options.TileSize),
+                (int)Math.Floor(position.Y / options.TileSize));
+        }
+
+        /// <summary>
+        /// Where the mini-map inset sits, or null when it is off or the control is too small
+        /// to give it room.
+        /// <para>
+        /// Depends only on the control size and the options, never on the tiles -- which is
+        /// what makes it cheap enough for <see cref="ToTile"/> to consult on every move.
+        /// </para>
+        /// </summary>
+        private static Rect? MiniMapRect(Size bounds, MapViewOptions options)
+        {
+            if (options.MiniMap == MiniMapLocation.Off)
+                return null;
+
+            double size = options.MiniMapSize;
+            double margin = options.MiniMapMargin;
+
+            // Dropped rather than shrunk when it will not fit: an inset scaled down to suit a
+            // narrow window stops being readable long before it stops fitting.
+            if (bounds.Width < size + (2 * margin) || bounds.Height < size + (2 * margin))
+                return null;
+
+            var left = options.MiniMap is MiniMapLocation.UpperLeft or MiniMapLocation.LowerLeft
+                ? margin
+                : bounds.Width - size - margin;
+
+            var top = options.MiniMap is MiniMapLocation.UpperLeft or MiniMapLocation.UpperRight
+                ? margin
+                : bounds.Height - size - margin;
+
+            return new Rect(left, top, size, size);
         }
 
         private void SetHovered(TileCoordinate? tile)
@@ -264,7 +306,8 @@ namespace NWorld.Map.Controls
             Rect bounds,
             IMapRenderer renderer,
             RenderFrame frame,
-            IReadOnlyList<MapTile> tiles) : ICustomDrawOperation
+            IReadOnlyList<MapTile> tiles,
+            Rect? miniMap) : ICustomDrawOperation
         {
             public Rect Bounds { get; } = bounds;
 
@@ -296,11 +339,102 @@ namespace NWorld.Map.Controls
                     // rather than left dangling so a failed draw surfaces here and not on
                     // the finalizer thread.
                     renderer.RenderTiles(canvas, frame, tiles).GetAwaiter().GetResult();
+
+                    // After the map, so the inset sits over it rather than under.
+                    if (miniMap is { } inset)
+                        DrawMiniMap(canvas, inset);
                 }
                 finally
                 {
                     canvas.RestoreToCount(checkpoint);
                 }
+            }
+
+            /// <summary>
+            /// The same tiles again, scaled to fit <paramref name="inset"/>.
+            /// <para>
+            /// The renderer is reused rather than given its own instance: the two passes are
+            /// sequential, and the guard an <see cref="IMapRenderer"/> keeps is against
+            /// concurrent frames, not successive draws.
+            /// </para>
+            /// </summary>
+            private void DrawMiniMap(SKCanvas canvas, Rect inset)
+            {
+                if (!TryGetExtent(out var minX, out var minY, out var columns, out var rows))
+                    return;
+
+                var rect = SKRect.Create(
+                    (float)inset.X, (float)inset.Y, (float)inset.Width, (float)inset.Height);
+
+                // Whole pixels, because the renderer takes an int tile size -- and at least
+                // one, since a map wider than the inset still has to show something.
+                var tileSize = Math.Max(1, Math.Min((int)(rect.Width / columns), (int)(rect.Height / rows)));
+
+                var checkpoint = canvas.Save();
+                try
+                {
+                    canvas.ClipRect(rect);
+
+                    // A scrim behind the tiles. The map still reads through the letterbox
+                    // bars of a map that is not square, but dimmed enough that the inset
+                    // holds together as one panel.
+                    using (var backdrop = new SKPaint { Color = new SKColor(0, 0, 0, 170) })
+                        canvas.DrawRect(rect, backdrop);
+
+                    canvas.Translate(
+                        rect.Left + ((rect.Width - (columns * tileSize)) / 2f) - (minX * tileSize),
+                        rect.Top + ((rect.Height - (rows * tileSize)) / 2f) - (minY * tileSize));
+
+                    renderer.RenderTiles(canvas, frame with { TileSize = tileSize }, tiles)
+                        .GetAwaiter().GetResult();
+                }
+                finally
+                {
+                    canvas.RestoreToCount(checkpoint);
+                }
+
+                // Outside the clip and inset by half a pixel, so a 1px stroke lands on whole
+                // pixels instead of straddling the edge and coming out grey.
+                using var border = new SKPaint
+                {
+                    Color = new SKColor(255, 255, 255, 90),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 1,
+                    IsAntialias = true,
+                };
+
+                canvas.DrawRect(
+                    new SKRect(rect.Left + 0.5f, rect.Top + 0.5f, rect.Right - 0.5f, rect.Bottom - 0.5f),
+                    border);
+            }
+
+            /// <summary>
+            /// The tile extent, as an origin and a size in tiles. False when there is nothing
+            /// to measure.
+            /// </summary>
+            private bool TryGetExtent(out int minX, out int minY, out int columns, out int rows)
+            {
+                minX = minY = int.MaxValue;
+                var maxX = int.MinValue;
+                var maxY = int.MinValue;
+
+                // Scanned rather than taken from the caller: the control is handed a flat
+                // list and told nothing about its shape. One pass, and only when the inset
+                // is actually on.
+                foreach (var tile in tiles)
+                {
+                    if (tile is null)
+                        continue;
+
+                    if (tile.X < minX) minX = tile.X;
+                    if (tile.X > maxX) maxX = tile.X;
+                    if (tile.Y < minY) minY = tile.Y;
+                    if (tile.Y > maxY) maxY = tile.Y;
+                }
+
+                columns = maxX - minX + 1;
+                rows = maxY - minY + 1;
+                return maxX >= minX && maxY >= minY;
             }
 
             public void Dispose()

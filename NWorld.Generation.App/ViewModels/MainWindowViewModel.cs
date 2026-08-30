@@ -47,7 +47,11 @@ public partial class MainWindowViewModel : ViewModelBase
     /// flight and what tells the control to repaint.
     /// </summary>
     [ObservableProperty]
-    private MapViewOptions _options = new() { TileSize = 16 };
+    private MapViewOptions _options = new()
+    {
+        TileSize = 16,
+        MiniMap = MiniMapLocation.LowerRight,
+    };
 
     public MainWindowViewModel()
     {
