@@ -1,0 +1,25 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:NWorld.Generation.App.ViewModels"
+        xmlns:map="clr-namespace:NWorld.Map.Controls;assembly=NWorld.Map"
+        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+        x:Class="NWorld.Generation.App.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{Binding Title}"
+        Width="1000" Height="700"
+        MinWidth="640" MinHeight="480"
+        WindowStartupLocation="CenterScreen">
+
+    <Design.DataContext>
+        <vm:MainWindowViewModel />
+    </Design.DataContext>
+
+    <map:MapView Tiles="{Binding Tiles}"
+                 Renderer="{Binding Renderer}"
+                 TileSize="{Binding TileSize}"
+                 HoverCommand="{Binding HoverCommand}"
+                 ClickCommand="{Binding ClickCommand}" />
+
+</Window>

@@ -388,6 +388,8 @@ test-results/
 *.app
 !NWorld.WorldGeneration.App/
 !NWorld.WorldGeneration.App/**
+!NWorld.Generation.App/
+!NWorld.Generation.App/**
 
 # content below from: https://github.com/github/gitignore/blob/master/Global/macOS.gitignore
 # General
@@ -457,5 +459,7 @@ $RECYCLE.BIN/
 !.vscode/extensions.json
 /NWorld.WorldGeneration.App/bin/
 /NWorld.WorldGeneration.App/obj
+/NWorld.Generation.App/bin/
+/NWorld.Generation.App/obj
 /2.nworldmap
 *.nworldmap
