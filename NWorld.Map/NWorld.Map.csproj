@@ -9,6 +9,9 @@
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.2.1" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.1" />
+    <!-- ISkiaSharpApiLeaseFeature: lets the control draw onto Avalonia's own SKCanvas
+         rather than blitting a bitmap. Pins SkiaSharp 2.88.8, matching the ref below. -->
+    <PackageReference Include="Avalonia.Skia" Version="11.2.1" />
     <PackageReference Include="Avalonia.Diagnostics" Version="11.2.1" />
     <PackageReference Include="SkiaSharp" Version="2.88.8" />
   </ItemGroup>
