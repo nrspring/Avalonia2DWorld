@@ -14,6 +14,10 @@
     <PackageReference Include="Avalonia.Skia" Version="11.2.1" />
     <PackageReference Include="Avalonia.Diagnostics" Version="11.2.1" />
     <PackageReference Include="SkiaSharp" Version="2.88.8" />
+    <!-- For MapViewModelBase: the same observable-property and command generators the view
+         models above this library use, so an app does not meet two MVVM conventions in one
+         code base. -->
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
 
 </Project>
