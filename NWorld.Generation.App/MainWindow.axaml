@@ -129,6 +129,13 @@
             <Setter Property="BorderThickness" Value="1" />
         </Style>
 
+        <Style Selector="Border.card CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="8,0,0,0" />
+        </Style>
+
         <!-- ========== the primary button ========== -->
 
         <Style Selector="Button.primary">
@@ -257,6 +264,20 @@
                                     Command="{Binding CreateMapCommand}" />
                         </Border>
 
+                    </StackPanel>
+                </Expander>
+            </Border>
+
+            <Border Classes="card">
+                <Expander IsExpanded="True" ToolTip.Tip="{Binding ViewHelp}">
+                    <Expander.Header>
+                        <TextBlock Classes="panelTitle" Text="View" />
+                    </Expander.Header>
+
+                    <StackPanel Spacing="10">
+                        <CheckBox Content="Frame rate"
+                                  IsChecked="{Binding ShowFrameRate}"
+                                  ToolTip.Tip="{Binding FrameRateHelp}" />
                     </StackPanel>
                 </Expander>
             </Border>

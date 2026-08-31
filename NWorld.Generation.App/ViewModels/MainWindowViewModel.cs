@@ -125,6 +125,34 @@ public partial class MainWindowViewModel : ViewModelBase
     public IMapRenderer Renderer => _renderer;
 
     /// <summary>
+    /// Whether the map view draws its frame-rate label. A view of the map rather than a fact
+    /// about it, which is why it lives in <see cref="Options"/> and not on the map.
+    /// </summary>
+    public bool ShowFrameRate
+    {
+        get => Options.ShowFrameRate;
+        set
+        {
+            if (Options.ShowFrameRate != value)
+                Options = Options with { ShowFrameRate = value };
+        }
+    }
+
+    /// <summary>What the View panel is for.</summary>
+    public string ViewHelp =>
+        "How the map is drawn, as opposed to what is on it.\n\n" +
+        "Nothing here changes a single tile, so none of it can be got wrong.";
+
+    /// <summary>The frame-rate toggle's tooltip.</summary>
+    public string FrameRateHelp =>
+        "Draw the frames per second in the top-right corner of the map.\n\n" +
+        "It counts frames the map view actually draws, averaged over half a second. The " +
+        "water animates continuously, so on a still map this is the cost of drawing one " +
+        "screenful: watch it while zooming out, where the tile count on screen climbs " +
+        "fastest.\n\n" +
+        "A dash means nothing was measured, which is what an empty view reads as.";
+
+    /// <summary>
     /// What the Start panel is for, in a sentence. The tooltips on the controls carry the
     /// rules; this one carries the point.
     /// </summary>
@@ -237,6 +265,12 @@ public partial class MainWindowViewModel : ViewModelBase
     /// </summary>
     private static bool TryReadSize(string? text, out int size) =>
         int.TryParse(text, out size) && size > 0 && size <= MaxMapDimension;
+
+    /// <summary>
+    /// Keeps the properties that read out of <see cref="Options"/> in step with it, however
+    /// it was replaced -- the toggle's own setter is only one of the ways it moves.
+    /// </summary>
+    partial void OnOptionsChanged(MapViewOptions value) => OnPropertyChanged(nameof(ShowFrameRate));
 
     /// <summary>
     /// Moves the hover highlight. Called with null when the pointer leaves the control.

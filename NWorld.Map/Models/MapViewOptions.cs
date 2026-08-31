@@ -93,6 +93,21 @@ namespace NWorld.Map.Models
             }
         }
 
+        /// <summary>
+        /// Whether to draw the frame rate in the top-right corner.
+        /// <para>
+        /// Off by default: it is an instrument, not part of the map. Worth turning on while
+        /// changing anything a render component does per tile, since the cost of that shows
+        /// up here long before it is visible as a stutter.
+        /// </para>
+        /// <para>
+        /// Frames the control actually draws, which is what makes it honest in both
+        /// directions: with <see cref="IsAnimated"/> off there is no repaint loop to measure
+        /// and the label reads a dash rather than inventing a number.
+        /// </para>
+        /// </summary>
+        public bool ShowFrameRate { get; init; }
+
         /// <summary>Gap between the mini-map inset and the two edges it is tucked against.</summary>
         public int MiniMapMargin
         {

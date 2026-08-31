@@ -95,6 +95,10 @@ namespace NWorld.Map.Controls
         public static readonly StyledProperty<ICommand?> ZoomCommandProperty =
             AvaloniaProperty.Register<MapView, ICommand?>(nameof(ZoomCommand));
 
+        // How long the frame rate is averaged over. Long enough to be steady, short enough
+        // that a change made while watching it shows up as an answer rather than a drift.
+        private const double RateWindowSeconds = 0.5;
+
         // One clock for the control's whole life, sampled once per frame and handed to every
         // tile in it. Never a frame counter: that would tie animation speed to frame rate.
         private readonly Stopwatch _clock = Stopwatch.StartNew();
@@ -106,6 +110,14 @@ namespace NWorld.Map.Controls
         private Point? _pointer;
 
         private bool _framePending;
+
+        // Frames drawn since the current measuring window opened, and when it opened.
+        // Counted over a window rather than taken from the gap between two frames: one
+        // interval is noise, a single late frame reads as a collapse, and a number that
+        // flickers every frame cannot be read at all.
+        private double _rateWindowStart;
+        private int _rateFrames;
+        private double _framesPerSecond;
 
         static MapView()
         {
@@ -181,13 +193,19 @@ namespace NWorld.Map.Controls
                 return;
             }
 
+            // Counted here rather than at the top of the method, so what is measured is
+            // frames that drew a map: the early return above is not a frame at 0ms.
+            var now = _clock.Elapsed.TotalSeconds;
+            MeasureFrameRate(now);
+
             context.Custom(new MapDrawOperation(
                 new Rect(Bounds.Size),
                 renderer,
-                new RenderFrame(options.TileSize, (float)_clock.Elapsed.TotalSeconds),
+                new RenderFrame(options.TileSize, (float)now),
                 tiles,
                 OriginPixels(options),
-                MiniMapRect(Bounds.Size, options)));
+                MiniMapRect(Bounds.Size, options),
+                options.ShowFrameRate ? _framesPerSecond : null));
 
             RequestNextFrame(options);
         }
@@ -271,10 +289,29 @@ namespace NWorld.Map.Controls
             base.OnDetachedFromVisualTree(e);
 
             // No top level left to schedule against, and the pointer is by definition no
-            // longer over anything.
+            // longer over anything. The rate window is dropped too: the gap until the control
+            // is attached again is not a slow frame.
             _framePending = false;
+            _rateFrames = 0;
+            _rateWindowStart = _clock.Elapsed.TotalSeconds;
             _pointer = null;
             SetHovered(null);
+        }
+
+        /// <summary>
+        /// Folds this frame into the rate, and republishes the average when the window is up.
+        /// </summary>
+        private void MeasureFrameRate(double now)
+        {
+            _rateFrames++;
+
+            var elapsed = now - _rateWindowStart;
+            if (elapsed < RateWindowSeconds)
+                return;
+
+            _framesPerSecond = _rateFrames / elapsed;
+            _rateFrames = 0;
+            _rateWindowStart = now;
         }
 
         /// <summary>
@@ -400,8 +437,14 @@ namespace NWorld.Map.Controls
             RenderFrame frame,
             IReadOnlyList<MapTile> tiles,
             SKPoint originPixels,
-            Rect? miniMap) : ICustomDrawOperation
+            Rect? miniMap,
+            double? framesPerSecond) : ICustomDrawOperation
         {
+            // Monospaced, so the box does not twitch as the digits change under it. Null when
+            // the machine has no such face, which Skia reads as "use the default".
+            private static readonly SKTypeface? LabelTypeface =
+                SKTypeface.FromFamilyName("Consolas");
+
             public Rect Bounds { get; } = bounds;
 
             public bool HitTest(Point p) => Bounds.Contains(p);
@@ -449,6 +492,11 @@ namespace NWorld.Map.Controls
                     // After the map, so the inset sits over it rather than under.
                     if (miniMap is { } inset)
                         DrawMiniMap(canvas, inset);
+
+                    // Last of all: an instrument reading the frame it is drawn in should be
+                    // on top of everything that frame cost.
+                    if (framesPerSecond is { } rate)
+                        DrawFrameRate(canvas, rate);
                 }
                 finally
                 {
@@ -512,6 +560,58 @@ namespace NWorld.Map.Controls
                 canvas.DrawRect(
                     new SKRect(rect.Left + 0.5f, rect.Top + 0.5f, rect.Right - 0.5f, rect.Bottom - 0.5f),
                     border);
+            }
+
+            /// <summary>
+            /// The frame rate, in a pill in the top-right corner.
+            /// <para>
+            /// Pushed below the mini-map when the inset is in that corner too. The inset was
+            /// there first and is the bigger thing to hide behind, and a number sitting on
+            /// top of a map of the map is unreadable anyway.
+            /// </para>
+            /// </summary>
+            private void DrawFrameRate(SKCanvas canvas, double rate)
+            {
+                const float margin = 12f;
+                const float padX = 8f;
+                const float padY = 4f;
+
+                // A dash rather than a zero before the first window closes, and whenever the
+                // repaint loop is off: no measurement is a different thing from no frames.
+                var text = rate > 0 ? $"{rate:0} FPS" : "-- FPS";
+
+                using var label = new SKPaint
+                {
+                    Color = new SKColor(0xE6, 0xEE, 0xFA),
+                    IsAntialias = true,
+                    TextSize = 12f,
+                    TextAlign = SKTextAlign.Right,
+                    Typeface = LabelTypeface,
+                };
+
+                var metrics = label.FontMetrics;
+                var width = label.MeasureText(text) + (padX * 2);
+                var height = metrics.Descent - metrics.Ascent + (padY * 2);
+
+                var box = SKRect.Create((float)Bounds.Width - margin - width, margin, width, height);
+
+                if (miniMap is { } inset)
+                {
+                    var insetRect = new SKRect(
+                        (float)inset.X, (float)inset.Y, (float)inset.Right, (float)inset.Bottom);
+
+                    if (box.IntersectsWith(insetRect))
+                        box.Offset(0, insetRect.Bottom + margin - box.Top);
+                }
+
+                using var backdrop = new SKPaint
+                {
+                    Color = new SKColor(0, 0, 0, 140),
+                    IsAntialias = true,
+                };
+
+                canvas.DrawRoundRect(box, 6f, 6f, backdrop);
+                canvas.DrawText(text, box.Right - padX, box.Top + padY - metrics.Ascent, label);
             }
 
             /// <summary>
