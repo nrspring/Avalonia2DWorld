@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows.Input;
@@ -83,11 +83,28 @@ namespace NWorld.Map.Controls
         public static readonly StyledProperty<ICommand?> ClickCommandProperty =
             AvaloniaProperty.Register<MapView, ICommand?>(nameof(ClickCommand));
 
+        /// <summary>
+        /// Invoked with a <see cref="MapWheelRequest"/> when the wheel turns over the
+        /// control. The parameter is never null.
+        /// <para>
+        /// Named for what callers use it for rather than for the event, but the control
+        /// takes no view on that: it reports the turn and where it happened, and a view
+        /// model that would rather pan than zoom is free to.
+        /// </para>
+        /// </summary>
+        public static readonly StyledProperty<ICommand?> ZoomCommandProperty =
+            AvaloniaProperty.Register<MapView, ICommand?>(nameof(ZoomCommand));
+
         // One clock for the control's whole life, sampled once per frame and handed to every
         // tile in it. Never a frame counter: that would tie animation speed to frame rate.
         private readonly Stopwatch _clock = Stopwatch.StartNew();
 
         private TileCoordinate? _hovered;
+
+        // Kept so that a zoom can re-resolve the hover without the pointer having moved.
+        // Null exactly when the pointer is not over the control.
+        private Point? _pointer;
+
         private bool _framePending;
 
         static MapView()
@@ -137,6 +154,13 @@ namespace NWorld.Map.Controls
             set => SetValue(ClickCommandProperty, value);
         }
 
+        /// <inheritdoc cref="ZoomCommandProperty"/>
+        public ICommand? ZoomCommand
+        {
+            get => GetValue(ZoomCommandProperty);
+            set => SetValue(ZoomCommandProperty, value);
+        }
+
         /// <summary>The tile the pointer is over, or null when it is outside the control.</summary>
         public TileCoordinate? HoveredTile => _hovered;
 
@@ -162,6 +186,7 @@ namespace NWorld.Map.Controls
                 renderer,
                 new RenderFrame(options.TileSize, (float)_clock.Elapsed.TotalSeconds),
                 tiles,
+                OriginPixels(options),
                 MiniMapRect(Bounds.Size, options)));
 
             RequestNextFrame(options);
@@ -170,12 +195,16 @@ namespace NWorld.Map.Controls
         protected override void OnPointerMoved(PointerEventArgs e)
         {
             base.OnPointerMoved(e);
-            SetHovered(ToTile(e.GetPosition(this)));
+
+            _pointer = e.GetPosition(this);
+            SetHovered(ToTile(_pointer.Value));
         }
 
         protected override void OnPointerExited(PointerEventArgs e)
         {
             base.OnPointerExited(e);
+
+            _pointer = null;
             SetHovered(null);
         }
 
@@ -198,6 +227,45 @@ namespace NWorld.Map.Controls
             e.Handled = true;
         }
 
+        protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
+        {
+            base.OnPointerWheelChanged(e);
+
+            var options = Options ?? MapViewOptions.Default;
+            var position = e.GetPosition(this);
+
+            // Taken from the event rather than from _pointer: the wheel arrives with no move
+            // in front of it when it is turned the instant the pointer enters. Recorded too,
+            // so the zoom that follows can re-resolve the hover against it.
+            _pointer = position;
+
+            var request = new MapWheelRequest(
+                e.Delta.Y,
+                e.Delta.X,
+                options.OriginX + (position.X / options.TileSize),
+                options.OriginY + (position.Y / options.TileSize),
+                Bounds.Width / options.TileSize,
+                Bounds.Height / options.TileSize,
+                MiniMapRect(Bounds.Size, options) is { } inset && inset.Contains(position));
+
+            // Marked handled only when something actually took it, so a control with no
+            // ZoomCommand bound still lets a ScrollViewer it happens to sit in scroll.
+            if (Execute(ZoomCommand, request))
+                e.Handled = true;
+        }
+
+        protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+        {
+            base.OnPropertyChanged(change);
+
+            // A zoom or a pan moves the map out from under a stationary pointer, and a
+            // stationary pointer sends no move event to notice it with. Without this the
+            // highlight stays on the tile that *was* under the cursor until the mouse is
+            // jiggled.
+            if (change.Property == OptionsProperty && _pointer is { } position)
+                SetHovered(ToTile(position));
+        }
+
         protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnDetachedFromVisualTree(e);
@@ -205,6 +273,7 @@ namespace NWorld.Map.Controls
             // No top level left to schedule against, and the pointer is by definition no
             // longer over anything.
             _framePending = false;
+            _pointer = null;
             SetHovered(null);
         }
 
@@ -223,12 +292,28 @@ namespace NWorld.Map.Controls
             if (MiniMapRect(Bounds.Size, options) is { } inset && inset.Contains(position))
                 return null;
 
+            // The inverse of what the draw translates by, and deliberately not the rounded
+            // form: snapping the origin here the way OriginPixels does would put the hit
+            // test up to half a tile away from the draw at the smallest zoom levels.
+            //
             // Floor rather than a cast: a cast truncates towards zero, which would fold the
             // whole strip from -tileSize to +tileSize into column 0.
             return new TileCoordinate(
-                (int)Math.Floor(position.X / options.TileSize),
-                (int)Math.Floor(position.Y / options.TileSize));
+                (int)Math.Floor(options.OriginX + (position.X / options.TileSize)),
+                (int)Math.Floor(options.OriginY + (position.Y / options.TileSize)));
         }
+
+        /// <summary>
+        /// The origin in whole pixels, which is what the tiles are translated by.
+        /// <para>
+        /// Rounded, because the render components build their sprites and atlases at whole
+        /// pixel sizes and a fractional translate makes Skia resample every one of them --
+        /// a blurred map, and the sampling cost paid on every tile of every frame.
+        /// </para>
+        /// </summary>
+        private static SKPoint OriginPixels(MapViewOptions options) => new(
+            (float)Math.Round(options.OriginX * options.TileSize),
+            (float)Math.Round(options.OriginY * options.TileSize));
 
         /// <summary>
         /// Where the mini-map inset sits, or null when it is off or the control is too small
@@ -271,10 +356,17 @@ namespace NWorld.Map.Controls
             Execute(HoverCommand, tile);
         }
 
-        private static void Execute(ICommand? command, TileCoordinate? parameter)
+        /// <summary>
+        /// Runs <paramref name="command"/> if it will have it, and reports whether it did --
+        /// which is what lets the wheel handler leave an event it could not use unhandled.
+        /// </summary>
+        private static bool Execute<T>(ICommand? command, T parameter)
         {
-            if (command is not null && command.CanExecute(parameter))
-                command.Execute(parameter);
+            if (command is null || !command.CanExecute(parameter))
+                return false;
+
+            command.Execute(parameter);
+            return true;
         }
 
         /// <summary>
@@ -307,6 +399,7 @@ namespace NWorld.Map.Controls
             IMapRenderer renderer,
             RenderFrame frame,
             IReadOnlyList<MapTile> tiles,
+            SKPoint originPixels,
             Rect? miniMap) : ICustomDrawOperation
         {
             public Rect Bounds { get; } = bounds;
@@ -334,11 +427,24 @@ namespace NWorld.Map.Controls
                 {
                     canvas.ClipRect(SKRect.Create((float)Bounds.Width, (float)Bounds.Height));
 
-                    // Every render function completes synchronously -- the Task on
-                    // IMapRenderer is there for the ones that may not always. Unwrapped
-                    // rather than left dangling so a failed draw surfaces here and not on
-                    // the finalizer thread.
-                    renderer.RenderTiles(canvas, frame, tiles).GetAwaiter().GetResult();
+                    // The origin scrolls the tiles and nothing else. The inset below is
+                    // screen furniture pinned to its corner, so the translate is unwound
+                    // before it rather than left standing.
+                    var scrolled = canvas.Save();
+                    try
+                    {
+                        canvas.Translate(-originPixels.X, -originPixels.Y);
+
+                        // Every render function completes synchronously -- the Task on
+                        // IMapRenderer is there for the ones that may not always. Unwrapped
+                        // rather than left dangling so a failed draw surfaces here and not
+                        // on the finalizer thread.
+                        renderer.RenderTiles(canvas, frame, tiles).GetAwaiter().GetResult();
+                    }
+                    finally
+                    {
+                        canvas.RestoreToCount(scrolled);
+                    }
 
                     // After the map, so the inset sits over it rather than under.
                     if (miniMap is { } inset)

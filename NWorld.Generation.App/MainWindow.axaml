@@ -20,6 +20,7 @@
                  Renderer="{Binding Renderer}"
                  Options="{Binding Options}"
                  HoverCommand="{Binding HoverCommand}"
-                 ClickCommand="{Binding ClickCommand}" />
+                 ClickCommand="{Binding ClickCommand}"
+                 ZoomCommand="{Binding ZoomCommand}" />
 
 </Window>

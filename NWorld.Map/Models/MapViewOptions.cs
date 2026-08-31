@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace NWorld.Map.Models
 {
@@ -39,6 +39,26 @@ namespace NWorld.Map.Models
                 _tileSize = value;
             }
         }
+
+        /// <summary>
+        /// The map coordinate at the control's top-left corner, in tiles and fractional
+        /// tiles. A tile at (x, y) is drawn at ((x - OriginX) * TileSize, (y - OriginY) *
+        /// TileSize) from the control's top-left.
+        /// <para>
+        /// In tile units rather than pixels so that it survives a <see cref="TileSize"/>
+        /// change unaltered. That is what makes a cursor-anchored zoom one subtraction in
+        /// the view model rather than a rescale the control would have to be told about.
+        /// </para>
+        /// <para>
+        /// Unclamped: the control will happily draw a map scrolled off its own edge. Where
+        /// the origin is allowed to go is the view model's call, since only it knows how big
+        /// the map is.
+        /// </para>
+        /// </summary>
+        public double OriginX { get; init; }
+
+        /// <inheritdoc cref="OriginX"/>
+        public double OriginY { get; init; }
 
         /// <summary>
         /// Whether to repaint continuously. Animated components -- water above all -- move
