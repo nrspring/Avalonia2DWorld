@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using NWorld.Map.Constants;
@@ -75,13 +75,13 @@ public partial class MainWindowViewModel : MapViewModelBase
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CreateMapCommand))]
     [NotifyPropertyChangedFor(nameof(SizeSummary), nameof(HasSizeProblem))]
-    private string _newMapWidth = "64";
+    private string _newMapWidth = "600";
 
     /// <inheritdoc cref="NewMapWidth"/>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(CreateMapCommand))]
     [NotifyPropertyChangedFor(nameof(SizeSummary), nameof(HasSizeProblem))]
-    private string _newMapHeight = "48";
+    private string _newMapHeight = "400";
 
     /// <summary>What the View panel is for.</summary>
     public string ViewHelp =>

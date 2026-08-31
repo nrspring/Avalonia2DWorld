@@ -238,13 +238,13 @@
                             <StackPanel Grid.Column="0">
                                 <TextBlock Classes="field" Text="WIDTH"
                                            ToolTip.Tip="{Binding WidthHelp}" />
-                                <TextBox Text="{Binding NewMapWidth}" Watermark="64"
+                                <TextBox Text="{Binding NewMapWidth}" Watermark="600"
                                          ToolTip.Tip="{Binding WidthHelp}" />
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Classes="field" Text="HEIGHT"
                                            ToolTip.Tip="{Binding HeightHelp}" />
-                                <TextBox Text="{Binding NewMapHeight}" Watermark="48"
+                                <TextBox Text="{Binding NewMapHeight}" Watermark="400"
                                          ToolTip.Tip="{Binding HeightHelp}" />
                             </StackPanel>
                         </Grid>
