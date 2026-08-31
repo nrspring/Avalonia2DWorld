@@ -348,6 +348,28 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Drags the map along with the pointer, one step of a right-button drag at a time.
+    /// </summary>
+    [RelayCommand]
+    private void Pan(MapPanRequest request)
+    {
+        if (_map is not { } map)
+            return;
+
+        // Subtracted, because the map moving right is the view moving left: what is under
+        // the pointer when the drag starts should still be under it as the map arrives.
+        Options = Clamp(
+            Options with
+            {
+                OriginX = Options.OriginX - request.DeltaX,
+                OriginY = Options.OriginY - request.DeltaY,
+            },
+            map,
+            request.ViewportX,
+            request.ViewportY);
+    }
+
+    /// <summary>
     /// Centres the view on a point picked in the mini-map inset.
     /// <para>
     /// The zoom level is left alone. Someone pointing at a corner of the overview is saying

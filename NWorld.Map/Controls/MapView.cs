@@ -89,6 +89,23 @@ namespace NWorld.Map.Controls
             AvaloniaProperty.Register<MapView, ICommand?>(nameof(ClickCommand));
 
         /// <summary>
+        /// Invoked with a <see cref="MapPanRequest"/> for each step of a right-button drag
+        /// across the map. The parameter is never null.
+        /// <para>
+        /// The right button, because the left one already means something on a map made of
+        /// tiles: a drag has to be distinguishable from a click, and asking the control to
+        /// tell them apart by how far the pointer moved before it came up would make every
+        /// click wait to find out what it was.
+        /// </para>
+        /// <para>
+        /// Bind it and the map can be dragged around; leave it unbound and a right drag does
+        /// nothing, and the event is left for whatever else may want it.
+        /// </para>
+        /// </summary>
+        public static readonly StyledProperty<ICommand?> PanCommandProperty =
+            AvaloniaProperty.Register<MapView, ICommand?>(nameof(PanCommand));
+
+        /// <summary>
         /// Invoked with a <see cref="MiniMapRequest"/> when the left button goes down inside
         /// the mini-map inset. The parameter is never null.
         /// <para>
@@ -130,6 +147,7 @@ namespace NWorld.Map.Controls
 
         // Held rather than made per pointer move: the pointer moves a great many times.
         private static readonly Cursor PickCursor = new(StandardCursorType.Hand);
+        private static readonly Cursor PanCursor = new(StandardCursorType.SizeAll);
 
         // One clock for the control's whole life, sampled once per frame and handed to every
         // tile in it. Never a frame counter: that would tie animation speed to frame rate.
@@ -151,6 +169,11 @@ namespace NWorld.Map.Controls
         // Whether the button that went down inside the inset is still down. While it is,
         // the pointer is captured and every move it makes is a move of the view.
         private bool _draggingMiniMap;
+
+        // Where the pointer was on the previous step of a right-button drag, or null when
+        // there is no drag. Kept as a position rather than a total, because what goes to the
+        // command is the step and not the gesture.
+        private Point? _panFrom;
 
         private TileCoordinate? _hovered;
 
@@ -213,6 +236,13 @@ namespace NWorld.Map.Controls
         {
             get => GetValue(ClickCommandProperty);
             set => SetValue(ClickCommandProperty, value);
+        }
+
+        /// <inheritdoc cref="PanCommandProperty"/>
+        public ICommand? PanCommand
+        {
+            get => GetValue(PanCommandProperty);
+            set => SetValue(PanCommandProperty, value);
         }
 
         /// <inheritdoc cref="MiniMapCommandProperty"/>
@@ -299,6 +329,25 @@ namespace NWorld.Map.Controls
                 return;
             }
 
+            if (_panFrom is { } previous)
+            {
+                var options = Options ?? MapViewOptions.Default;
+
+                Execute(PanCommand, new MapPanRequest(
+                    (_pointer.Value.X - previous.X) / options.TileSize,
+                    (_pointer.Value.Y - previous.Y) / options.TileSize,
+                    Bounds.Width / options.TileSize,
+                    Bounds.Height / options.TileSize));
+
+                _panFrom = _pointer;
+                e.Handled = true;
+
+                // The hover is left alone rather than suppressed: the pointer really is over
+                // the map, and the tile under it changes as the map slides past. Moving the
+                // options re-resolves it, so the highlight stays where the cursor is.
+                return;
+            }
+
             SetHovered(ToTile(_pointer.Value));
             UpdateCursor();
         }
@@ -309,7 +358,7 @@ namespace NWorld.Map.Controls
 
             // Not while dragging: the pointer leaving the control during a capture is
             // normal, and the drag is still going on.
-            if (_draggingMiniMap)
+            if (_draggingMiniMap || _panFrom is not null)
                 return;
 
             _pointer = null;
@@ -320,10 +369,25 @@ namespace NWorld.Map.Controls
         {
             base.OnPointerPressed(e);
 
-            if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-                return;
-
+            var point = e.GetCurrentPoint(this);
             var position = e.GetPosition(this);
+
+            if (point.Properties.IsRightButtonPressed)
+            {
+                // Not over the inset, which is a picture of the whole map and has nothing to
+                // pan, and not without somewhere to send it.
+                if (PanCommand is null || MiniMapRequestAt(position) is not null)
+                    return;
+
+                _panFrom = position;
+                e.Pointer.Capture(this);
+                Cursor = PanCursor;
+                e.Handled = true;
+                return;
+            }
+
+            if (!point.Properties.IsLeftButtonPressed)
+                return;
 
             // The inset first, since it is drawn over the map: a press inside it is about the
             // inset, and the tile behind it is not what anyone was pointing at. Handled only
@@ -357,6 +421,15 @@ namespace NWorld.Map.Controls
         {
             base.OnPointerReleased(e);
 
+            if (_panFrom is not null)
+            {
+                _panFrom = null;
+                e.Pointer.Capture(null);
+                e.Handled = true;
+                UpdateCursor();
+                return;
+            }
+
             if (!_draggingMiniMap)
                 return;
 
@@ -383,6 +456,7 @@ namespace NWorld.Map.Controls
             base.OnPointerCaptureLost(e);
 
             _draggingMiniMap = false;
+            _panFrom = null;
             UpdateCursor();
         }
 
@@ -438,6 +512,7 @@ namespace NWorld.Map.Controls
             _rateFrames = 0;
             _rateWindowStart = _clock.Elapsed.TotalSeconds;
             _draggingMiniMap = false;
+            _panFrom = null;
             _pointer = null;
             Cursor = null;
             SetHovered(null);
@@ -572,6 +647,12 @@ namespace NWorld.Map.Controls
         /// </summary>
         private void UpdateCursor()
         {
+            if (_panFrom is not null)
+            {
+                Cursor = PanCursor;
+                return;
+            }
+
             var overInset = _pointer is { } position && MiniMapRequestAt(position) is not null;
 
             Cursor = MiniMapCommand is not null && (overInset || _draggingMiniMap)

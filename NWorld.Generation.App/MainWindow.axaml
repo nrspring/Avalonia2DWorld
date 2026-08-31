@@ -211,7 +211,8 @@
                      HoverCommand="{Binding HoverCommand}"
                      ClickCommand="{Binding ClickCommand}"
                      ZoomCommand="{Binding ZoomCommand}"
-                     MiniMapCommand="{Binding MiniMapCommand}" />
+                     MiniMapCommand="{Binding MiniMapCommand}"
+                     PanCommand="{Binding PanCommand}" />
 
         <!-- The accordion. One card per panel, stacked; further panels go in here beside
              Start and need nothing else. Fixed width rather than a share of the window, so
