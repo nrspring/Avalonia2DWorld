@@ -11,15 +11,28 @@ namespace NWorld.Map.Models
     /// </para>
     /// <para>
     /// A tile is never written to once published. An edit clones the tile, changes the clone,
-    /// and drops it into a fresh list -- copy-on-write. That is not tidiness: the renderer
-    /// walks these tiles on Avalonia's render thread, and editing a
+    /// and puts it in a fresh row -- copy-on-write. That is not tidiness: the renderer walks
+    /// these tiles on Avalonia's render thread, and editing a
     /// <see cref="MapTile.MapRenderComponents"/> dictionary while it is being enumerated
     /// throws out of the compositor, intermittently and nowhere near the cause.
+    /// </para>
+    /// <para>
+    /// The unit of copying is the row. An edit replaces the rows it touches and shares every
+    /// other row with the generation before it, so publishing costs the rows that changed
+    /// plus one array of row references -- kilobytes on a map where copying the whole thing
+    /// would be megabytes. A hover, which is two tiles and usually two rows, is what this is
+    /// for: it happens on every mouse move.
     /// </para>
     /// </summary>
     public sealed class TileMap
     {
-        private readonly MapTile[] _tiles;
+        private readonly MapTile[][] _rows;
+
+        /// <summary>
+        /// Rows already replaced during the edit in progress, so that a second change to the
+        /// same row edits the copy this edit made rather than copying it again.
+        /// </summary>
+        private readonly HashSet<int> _replaced = [];
 
         /// <summary>
         /// Creates a map covering <paramref name="width"/> x <paramref name="height"/> tiles
@@ -38,18 +51,22 @@ namespace NWorld.Map.Models
             OriginX = originX;
             OriginY = originY;
 
-            _tiles = new MapTile[width * height];
+            _rows = new MapTile[height][];
 
             // Reading order, which is also the order the renderer prefers: components are
             // free to coalesce runs of adjacent tiles, and none of them require it.
             for (var y = 0; y < height; y++)
             {
+                var row = new MapTile[width];
+
                 for (var x = 0; x < width; x++)
                 {
                     var coordinate = new TileCoordinate(originX + x, originY + y);
-                    _tiles[(y * width) + x] = fill?.Invoke(coordinate)
+                    row[x] = fill?.Invoke(coordinate)
                         ?? new MapTile { X = coordinate.X, Y = coordinate.Y };
                 }
+
+                _rows[y] = row;
             }
 
             Tiles = Publish();
@@ -64,11 +81,12 @@ namespace NWorld.Map.Models
         public int OriginY { get; }
 
         /// <summary>
-        /// The current tiles, for handing to <see cref="Controls.MapView.Tiles"/>. A new list
+        /// The current tiles, for handing to <see cref="Controls.MapView.Tiles"/>. A new grid
         /// after every <see cref="Edit"/>, so binding to it repaints; the one previously
-        /// handed out is left untouched and stays safe for a frame still being drawn.
+        /// handed out keeps the rows it was published with and stays safe for a frame that is
+        /// still being drawn.
         /// </summary>
-        public IReadOnlyList<MapTile> Tiles { get; private set; }
+        public TileGrid Tiles { get; private set; }
 
         /// <summary>Whether <paramref name="coordinate"/> falls inside the map.</summary>
         public bool Contains(TileCoordinate coordinate) =>
@@ -80,7 +98,9 @@ namespace NWorld.Map.Models
         /// change a tile through <see cref="Edit"/>, never by writing to what this returns.
         /// </summary>
         public MapTile? this[TileCoordinate coordinate] =>
-            TryGetIndex(coordinate, out var index) ? _tiles[index] : null;
+            Contains(coordinate)
+                ? _rows[coordinate.Y - OriginY][coordinate.X - OriginX]
+                : null;
 
         /// <summary>
         /// Applies every change in <paramref name="edits"/> and then publishes once.
@@ -94,36 +114,32 @@ namespace NWorld.Map.Models
         {
             ArgumentNullException.ThrowIfNull(edits);
 
+            _replaced.Clear();
             edits(new Editor(this));
             Tiles = Publish();
         }
 
-        private bool TryGetIndex(TileCoordinate coordinate, out int index)
-        {
-            if (!Contains(coordinate))
-            {
-                index = -1;
-                return false;
-            }
-
-            index = ((coordinate.Y - OriginY) * Width) + (coordinate.X - OriginX);
-            return true;
-        }
+        /// <summary>
+        /// Snapshots the rows. Only the array of row references is copied: the rows in it are
+        /// shared with the grid published before this one, which is sound because a row is
+        /// replaced wholesale when it changes and never written to in place.
+        /// </summary>
+        private TileGrid Publish() =>
+            new((MapTile[][])_rows.Clone(), Width, Height, OriginX, OriginY);
 
         /// <summary>
-        /// Snapshots the working array. The copy is what callers get, so an edit landing in
-        /// <see cref="_tiles"/> cannot alter a list the render thread is already reading.
+        /// Replaces the row containing <paramref name="y"/> with a copy, unless the edit in
+        /// progress has already done so, and returns it ready to be written to.
         /// </summary>
-        /// <remarks>
-        /// One array copy per edit -- 8 bytes a tile. Past about 10,600 tiles that clears the
-        /// 85,000-byte large-object threshold and every publish lands on the LOH, which at
-        /// drag speed is real gen2 pressure. The way out is to stop copying and swap the slot
-        /// in place instead (<c>Volatile.Write(ref _tiles[index], replacement)</c>, publishing
-        /// the same array every time), which works because an array enumerator has no version
-        /// check to trip -- but it then needs a revision the control can watch, since the list
-        /// reference no longer changes and nothing would invalidate the visual.
-        /// </remarks>
-        private MapTile[] Publish() => (MapTile[])_tiles.Clone();
+        private MapTile[] MutableRow(int y)
+        {
+            var index = y - OriginY;
+
+            if (_replaced.Add(index))
+                _rows[index] = (MapTile[])_rows[index].Clone();
+
+            return _rows[index];
+        }
 
         /// <summary>
         /// Edits tiles inside an <see cref="Edit"/> call. Only valid for the duration of that
@@ -140,12 +156,15 @@ namespace NWorld.Map.Models
             {
                 ArgumentNullException.ThrowIfNull(change);
 
-                if (!map.TryGetIndex(coordinate, out var index))
+                if (!map.Contains(coordinate))
                     return;
 
-                var replacement = map._tiles[index].Clone();
+                var row = map.MutableRow(coordinate.Y);
+                var column = coordinate.X - map.OriginX;
+
+                var replacement = row[column].Clone();
                 change(replacement);
-                map._tiles[index] = replacement;
+                row[column] = replacement;
             }
         }
     }

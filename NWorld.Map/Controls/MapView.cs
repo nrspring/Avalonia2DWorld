@@ -32,16 +32,21 @@ namespace NWorld.Map.Controls
     public class MapView : Control
     {
         /// <summary>
-        /// The tiles to draw. Passed to the renderer as-is, in the order given -- components
-        /// may coalesce runs of adjacent tiles, so reading order is worth preserving.
+        /// The tiles to draw, with the shape that says where each one is.
         /// <para>
-        /// The list is handed to the render thread by reference and read there, so it must
-        /// not be mutated once assigned. Publish a new list instead: that swap is atomic
-        /// where an in-place edit races the frame being drawn.
+        /// A grid rather than a flat list because the control only ever draws the part of it
+        /// that fits on screen, and it should not have to look through a map to find that
+        /// part: with the shape in hand the screenful is a slice, and the work of a frame
+        /// follows the size of the window instead of the size of the map.
+        /// </para>
+        /// <para>
+        /// Handed to the render thread by reference and read there, so it must not be
+        /// mutated once assigned. Publish a new grid instead -- which is what
+        /// <see cref="TileMap"/> does, sharing every row the edit did not touch.
         /// </para>
         /// </summary>
-        public static readonly StyledProperty<IReadOnlyList<MapTile>?> TilesProperty =
-            AvaloniaProperty.Register<MapView, IReadOnlyList<MapTile>?>(nameof(Tiles));
+        public static readonly StyledProperty<TileGrid?> TilesProperty =
+            AvaloniaProperty.Register<MapView, TileGrid?>(nameof(Tiles));
 
         /// <summary>
         /// The renderer that draws the tiles. Nothing is drawn while this is null.
@@ -117,6 +122,11 @@ namespace NWorld.Map.Controls
         private double _animationSeconds;
         private double _lastFrameSeconds;
 
+        // The mini-map, kept as a picture between frames. The inset is the one thing left
+        // whose cost follows the size of the map, because all of it is on screen and none of
+        // it can be left out.
+        private readonly MiniMapCache _miniMapCache = new();
+
         private TileCoordinate? _hovered;
 
         // Kept so that a zoom can re-resolve the hover without the pointer having moved.
@@ -146,7 +156,7 @@ namespace NWorld.Map.Controls
         }
 
         /// <inheritdoc cref="TilesProperty"/>
-        public IReadOnlyList<MapTile>? Tiles
+        public TileGrid? Tiles
         {
             get => GetValue(TilesProperty);
             set => SetValue(TilesProperty, value);
@@ -207,6 +217,8 @@ namespace NWorld.Map.Controls
                 return;
             }
 
+            var miniMap = MiniMapRect(Bounds.Size, options);
+
             // Counted here rather than at the top of the method, so what is measured is
             // frames that drew a map: the early return above is not a frame at 0ms.
             var now = _clock.Elapsed.TotalSeconds;
@@ -218,8 +230,11 @@ namespace NWorld.Map.Controls
                 renderer,
                 new RenderFrame(options.TileSize, (float)_animationSeconds),
                 tiles,
+                VisibleWindow(tiles, options),
                 OriginPixels(options),
-                MiniMapRect(Bounds.Size, options),
+                miniMap,
+                _miniMapCache,
+                now,
                 options.ShowFrameRate ? _framesPerSecond : null));
 
             RequestNextFrame(options);
@@ -330,6 +345,30 @@ namespace NWorld.Map.Controls
             // Recorded either way: the gap that matters is the one since the last frame that
             // was drawn, not since the last one that moved the animation on.
             _lastFrameSeconds = now;
+        }
+
+        /// <summary>
+        /// The part of <paramref name="tiles"/> that lands inside the control, as a view over
+        /// the grid rather than a copy of it.
+        /// <para>
+        /// Worked out from the origin and the tile size, which is the whole point of being
+        /// given a grid: a map of a million tiles costs the same to draw as one of a
+        /// thousand, because neither the control nor the renderer ever touches a tile that is
+        /// not on screen.
+        /// </para>
+        /// <para>
+        /// A tile of margin on every side. The tile under the top-left corner is usually only
+        /// part way on, and a component is free to draw a little past its own square.
+        /// </para>
+        /// </summary>
+        private TileWindow VisibleWindow(TileGrid tiles, MapViewOptions options)
+        {
+            var minX = (int)Math.Floor(options.OriginX) - 1;
+            var minY = (int)Math.Floor(options.OriginY) - 1;
+            var maxX = (int)Math.Ceiling(options.OriginX + (Bounds.Width / options.TileSize)) + 1;
+            var maxY = (int)Math.Ceiling(options.OriginY + (Bounds.Height / options.TileSize)) + 1;
+
+            return tiles.Window(minX, minY, maxX, maxY);
         }
 
         /// <summary>
@@ -476,6 +515,117 @@ namespace NWorld.Map.Controls
         }
 
         /// <summary>
+        /// The mini-map, held as a picture between frames.
+        /// <para>
+        /// The inset is the whole map at inset scale, so drawing it costs a pass over every
+        /// tile there is -- and unlike the map pass, none of it can be culled, because all of
+        /// it is on screen. On a large map that is the single most expensive thing in the
+        /// frame, and it is spent redrawing a picture that is a few hundred pixels across and
+        /// has usually not changed.
+        /// </para>
+        /// <para>
+        /// So it is drawn once and kept. The cost of a rebuild is unchanged; what changes is
+        /// how often one happens: only when the tiles are replaced, and then no more than
+        /// once every <see cref="RefreshSeconds"/>. The inset therefore does not animate, and
+        /// lags an edit by up to that long. Both are the right trade for an overview: at one
+        /// pixel a tile there is nothing in the animation left to see, and a hover highlight
+        /// is smaller than a pixel.
+        /// </para>
+        /// </summary>
+        private sealed class MiniMapCache
+        {
+            /// <summary>How long a picture may stand while the tiles under it change.</summary>
+            private const double RefreshSeconds = 1.0;
+
+            /// <summary>
+            /// Largest picture worth holding, in pixels. Past this the caller draws straight
+            /// through instead: a mini-map that costs a frame is better than one that costs
+            /// a hundred megabytes.
+            /// </summary>
+            private const long MaxSnapshotPixels = 8L * 1024 * 1024;
+
+            private SKImage? _image;
+
+            // The one before it, dropped only when a third arrives. A frame that has already
+            // drawn from an image may not have reached the GPU yet, and disposing it the
+            // moment its replacement exists is how that turns into a use after free.
+            private SKImage? _previous;
+
+            private TileGrid? _tiles;
+            private int _width;
+            private int _height;
+            private double _builtAt;
+
+            /// <summary>
+            /// The current picture of the mini-map, rebuilding it first if it is stale. Null
+            /// when the map is too large to hold as one, which the caller answers by drawing
+            /// the tiles itself.
+            /// </summary>
+            public SKImage? ImageFor(
+                IMapRenderer renderer,
+                RenderFrame frame,
+                TileGrid tiles,
+                int tileSize,
+                int deviceScale,
+                double nowSeconds)
+            {
+                // Built at the resolution it will be drawn at, not at the control's, so the
+                // picture is exactly as sharp as the draw it stands in for.
+                var pixelTileSize = tileSize * deviceScale;
+                var width = tiles.Width * pixelTileSize;
+                var height = tiles.Height * pixelTileSize;
+
+                if ((long)width * height > MaxSnapshotPixels)
+                    return null;
+
+                var sameShape = _image is not null && _width == width && _height == height;
+                if (sameShape && (ReferenceEquals(_tiles, tiles) || nowSeconds - _builtAt < RefreshSeconds))
+                    return _image;
+
+                return Build(renderer, frame, tiles, pixelTileSize, width, height, nowSeconds);
+            }
+
+            private SKImage? Build(
+                IMapRenderer renderer,
+                RenderFrame frame,
+                TileGrid tiles,
+                int pixelTileSize,
+                int width,
+                int height,
+                double nowSeconds)
+            {
+                using var surface = SKSurface.Create(
+                    new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
+
+                // Out of memory, or a size Skia would not take. Whatever is already cached is
+                // a better answer than a blank corner.
+                if (surface is null)
+                    return _image;
+
+                var canvas = surface.Canvas;
+                canvas.Clear(SKColors.Transparent);
+
+                // The map's own origin to the picture's, so a map that does not start at
+                // (0, 0) still lands inside it.
+                canvas.Translate(-tiles.OriginX * pixelTileSize, -tiles.OriginY * pixelTileSize);
+
+                renderer.RenderTiles(canvas, frame with { TileSize = pixelTileSize }, tiles)
+                    .GetAwaiter().GetResult();
+
+                _previous?.Dispose();
+                _previous = _image;
+                _image = surface.Snapshot();
+
+                _tiles = tiles;
+                _width = width;
+                _height = height;
+                _builtAt = nowSeconds;
+
+                return _image;
+            }
+        }
+
+        /// <summary>
         /// Carries one frame's worth of arguments over to the render thread, where Avalonia
         /// hands back the <see cref="SKCanvas"/> it is compositing into.
         /// </summary>
@@ -483,9 +633,12 @@ namespace NWorld.Map.Controls
             Rect bounds,
             IMapRenderer renderer,
             RenderFrame frame,
-            IReadOnlyList<MapTile> tiles,
+            TileGrid tiles,
+            IReadOnlyList<MapTile> visible,
             SKPoint originPixels,
             Rect? miniMap,
+            MiniMapCache miniMapCache,
+            double nowSeconds,
             double? framesPerSecond) : ICustomDrawOperation
         {
             // Monospaced, so the box does not twitch as the digits change under it. Null when
@@ -530,14 +683,15 @@ namespace NWorld.Map.Controls
                         // IMapRenderer is there for the ones that may not always. Unwrapped
                         // rather than left dangling so a failed draw surfaces here and not
                         // on the finalizer thread.
-                        renderer.RenderTiles(canvas, frame, tiles).GetAwaiter().GetResult();
+                        renderer.RenderTiles(canvas, frame, visible).GetAwaiter().GetResult();
                     }
                     finally
                     {
                         canvas.RestoreToCount(scrolled);
                     }
 
-                    // After the map, so the inset sits over it rather than under.
+                    // After the map, so the inset sits over it rather than under. The inset
+                    // shows the whole map, so it gets the grid and not the screenful.
                     if (miniMap is { } inset)
                         DrawMiniMap(canvas, inset);
 
@@ -562,15 +716,21 @@ namespace NWorld.Map.Controls
             /// </summary>
             private void DrawMiniMap(SKCanvas canvas, Rect inset)
             {
-                if (!TryGetExtent(out var minX, out var minY, out var columns, out var rows))
-                    return;
-
                 var rect = SKRect.Create(
                     (float)inset.X, (float)inset.Y, (float)inset.Width, (float)inset.Height);
 
                 // Whole pixels, because the renderer takes an int tile size -- and at least
                 // one, since a map wider than the inset still has to show something.
-                var tileSize = Math.Max(1, Math.Min((int)(rect.Width / columns), (int)(rect.Height / rows)));
+                var tileSize = Math.Max(
+                    1, Math.Min((int)(rect.Width / tiles.Width), (int)(rect.Height / tiles.Height)));
+
+                // The inset is drawn in the control's coordinates but lands on a surface that
+                // may be scaled up for the display. Building the snapshot at that scale is
+                // what keeps it as sharp as the direct draw it replaces.
+                var deviceScale = Math.Max(1, (int)MathF.Ceiling(canvas.TotalMatrix.ScaleX));
+
+                var snapshot = miniMapCache.ImageFor(
+                    renderer, frame, tiles, tileSize, deviceScale, nowSeconds);
 
                 var checkpoint = canvas.Save();
                 try
@@ -583,12 +743,35 @@ namespace NWorld.Map.Controls
                     using (var backdrop = new SKPaint { Color = new SKColor(0, 0, 0, 170) })
                         canvas.DrawRect(rect, backdrop);
 
-                    canvas.Translate(
-                        rect.Left + ((rect.Width - (columns * tileSize)) / 2f) - (minX * tileSize),
-                        rect.Top + ((rect.Height - (rows * tileSize)) / 2f) - (minY * tileSize));
+                    var width = tiles.Width * tileSize;
+                    var height = tiles.Height * tileSize;
 
-                    renderer.RenderTiles(canvas, frame with { TileSize = tileSize }, tiles)
-                        .GetAwaiter().GetResult();
+                    var left = rect.Left + ((rect.Width - width) / 2f);
+                    var top = rect.Top + ((rect.Height - height) / 2f);
+
+                    if (snapshot is not null)
+                    {
+                        // The picture is built at the display resolution and drawn at the
+                        // control's, so it is shrunk by the display scale and no further --
+                        // which bilinear covers. Nearest would alias that down to a stipple,
+                        // and mip sampling would pay for a reduction that never happens.
+                        using var sampling = new SKPaint
+                        {
+                            FilterQuality = SKFilterQuality.Low,
+                            IsAntialias = true,
+                        };
+
+                        canvas.DrawImage(snapshot, SKRect.Create(left, top, width, height), sampling);
+                    }
+                    else
+                    {
+                        // Too big to hold as a picture. Drawn straight through instead, which
+                        // is what this always used to do: slower per frame, but a mini-map
+                        // that costs a frame is better than one that costs the memory.
+                        canvas.Translate(left - (tiles.OriginX * tileSize), top - (tiles.OriginY * tileSize));
+                        renderer.RenderTiles(canvas, frame with { TileSize = tileSize }, tiles)
+                            .GetAwaiter().GetResult();
+                    }
                 }
                 finally
                 {
@@ -660,35 +843,6 @@ namespace NWorld.Map.Controls
 
                 canvas.DrawRoundRect(box, 6f, 6f, backdrop);
                 canvas.DrawText(text, box.Right - padX, box.Top + padY - metrics.Ascent, label);
-            }
-
-            /// <summary>
-            /// The tile extent, as an origin and a size in tiles. False when there is nothing
-            /// to measure.
-            /// </summary>
-            private bool TryGetExtent(out int minX, out int minY, out int columns, out int rows)
-            {
-                minX = minY = int.MaxValue;
-                var maxX = int.MinValue;
-                var maxY = int.MinValue;
-
-                // Scanned rather than taken from the caller: the control is handed a flat
-                // list and told nothing about its shape. One pass, and only when the inset
-                // is actually on.
-                foreach (var tile in tiles)
-                {
-                    if (tile is null)
-                        continue;
-
-                    if (tile.X < minX) minX = tile.X;
-                    if (tile.X > maxX) maxX = tile.X;
-                    if (tile.Y < minY) minY = tile.Y;
-                    if (tile.Y > maxY) maxY = tile.Y;
-                }
-
-                columns = maxX - minX + 1;
-                rows = maxY - minY + 1;
-                return maxX >= minX && maxY >= minY;
             }
 
             public void Dispose()

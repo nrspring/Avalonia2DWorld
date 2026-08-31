@@ -91,7 +91,7 @@ public partial class MainWindowViewModel : ViewModelBase
     /// </para>
     /// </summary>
     [ObservableProperty]
-    private IReadOnlyList<MapTile>? _tiles;
+    private TileGrid? _tiles;
 
     /// <summary>
     /// How the map is drawn. Replaced rather than edited -- <c>Options = Options with
