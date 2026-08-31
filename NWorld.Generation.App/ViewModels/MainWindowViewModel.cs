@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using NWorld.Generation.App.Generation;
 using NWorld.Map.Constants;
 using NWorld.Map.Models;
 using NWorld.Map.ViewModels;
@@ -83,6 +85,33 @@ public partial class MainWindowViewModel : MapViewModelBase
     [NotifyPropertyChangedFor(nameof(SizeSummary), nameof(HasSizeProblem))]
     private string _newMapHeight = "400";
 
+    /// <summary>
+    /// How many continents the next build makes. An int, and bounded by the slider rather
+    /// than by validation: there is no way to type a wrong one.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LandSummary))]
+    private int _continentCount = 4;
+
+    /// <summary>How much of the map ends up as land, as a percentage.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LandSummary))]
+    private double _landCoverage = 30;
+
+    /// <summary>How ragged the coastlines come out, as a percentage.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LandSummary))]
+    private double _coastRoughness = 45;
+
+    /// <summary>
+    /// What makes a build repeatable. A string for the same reason the sizes are: a box being
+    /// typed into passes through states that are not numbers.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(BuildContinentsCommand))]
+    [NotifyPropertyChangedFor(nameof(LandSummary), nameof(HasLandProblem))]
+    private string _continentSeed = "1";
+
     /// <summary>What the View panel is for.</summary>
     public string ViewHelp =>
         "How the map is drawn, as opposed to what is on it.\n\n" +
@@ -105,6 +134,53 @@ public partial class MainWindowViewModel : MapViewModelBase
         "screenful: watch it while zooming out, where the tile count on screen climbs " +
         "fastest.\n\n" +
         "A dash means nothing was measured, which is what an empty view reads as.";
+
+    /// <summary>What the Base Land panel is for.</summary>
+    public string BaseLandHelp =>
+        ("Raise the land the world is built on: grass at elevation 1, everywhere the sea is " +
+         "not.@@" +
+         "Continents come first and islands after, built separately because they are " +
+         "different things -- a continent is where the map is going to happen, an island is " +
+         "detail around the edges of it.@@" +
+         "Each build starts from open ocean again, so a build is never laid on top of the " +
+         "last one. The same settings and the same seed always give the same land.").Replace("@@", "\n\n");
+
+    /// <summary>The continent-count tooltip.</summary>
+    public string ContinentCountHelp =>
+        ("How many separate landmasses to grow.@@" +
+         "They are spread as far apart as the map allows, and sized around the land budget " +
+         "below: more continents on the same budget means smaller ones, not more land.").Replace("@@", "\n\n");
+
+    /// <summary>The land-coverage tooltip.</summary>
+    public string LandCoverageHelp =>
+        ("How much of the map ends up as land.@@" +
+         "Exact rather than approximate: the generator scores every tile and takes the best " +
+         "of them, so this figure holds however ragged the coast is.@@" +
+         "The sea keeps the outer tenth of the map whatever this says. A continent cut off " +
+         "by the border reads as a mistake.").Replace("@@", "\n\n");
+
+    /// <summary>The coast-roughness tooltip.</summary>
+    public string CoastRoughnessHelp =>
+        ("How far the coastline wanders from the shape underneath it.@@" +
+         "At zero the continents are near-circular. High up, the coast is bitten deep enough " +
+         "to strand pieces offshore as islands of their own -- which is a fine way to get " +
+         "an archipelago, and not what the islands panel will be for.@@" +
+         "It does not change how much land there is, only where the edge of it falls.").Replace("@@", "\n\n");
+
+    /// <summary>The seed tooltip.</summary>
+    public string ContinentSeedHelp =>
+        ("Any whole number. The same seed with the same settings builds the same continents, " +
+         "every time.@@" +
+         "Change it to get a different world of the same description; the button beside it " +
+         "picks one at random.").Replace("@@", "\n\n");
+
+    /// <summary>The build-button tooltip.</summary>
+    public string BuildContinentsHelp =>
+        ("Rebuild the map as sea, and raise the continents into it: grass at elevation 1, " +
+         "deep water at 0.@@" +
+         "This replaces everything on the map, including a previous build and anything " +
+         "selected. There is no undo yet -- the seed is what gets a world back.@@" +
+         "Greyed out until there is a map to build on.").Replace("@@", "\n\n");
 
     /// <summary>
     /// What the Start panel is for, in a sentence. The tooltips on the controls carry the
@@ -171,6 +247,73 @@ public partial class MainWindowViewModel : MapViewModelBase
     public bool HasSizeProblem => !CanCreateMap();
 
     /// <summary>
+    /// The line under the continent controls: what the next build will do, or what is
+    /// stopping it.
+    /// </summary>
+    public string LandSummary
+    {
+        get
+        {
+            if (Tiles is not { } grid)
+                return "Make a map in Start first.";
+
+            if (!TryReadSeed(ContinentSeed, out _))
+                return "Seed: any whole number.";
+
+            var tiles = (long)grid.Width * grid.Height * LandCoverage / 100;
+
+            return $"{ContinentCount} continent{(ContinentCount == 1 ? string.Empty : "s")}, " +
+                   $"about {tiles:N0} tiles of grass.";
+        }
+    }
+
+    /// <inheritdoc cref="HasSizeProblem"/>
+    public bool HasLandProblem => !CanBuildContinents();
+
+    /// <summary>
+    /// Raises continents out of the sea: grass at elevation 1 inside the coastlines, deep
+    /// water at 0 outside them.
+    /// <para>
+    /// A rebuild rather than an edit. Every tile is decided by the same pass, which is both
+    /// the fastest way to touch all of them and what makes a build repeatable: the map that
+    /// comes out depends on the settings and the seed, never on what was there before.
+    /// </para>
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanBuildContinents))]
+    private void BuildContinents()
+    {
+        if (_map is not { } map || !TryReadSeed(ContinentSeed, out var seed))
+            return;
+
+        var land = ContinentBuilder.Build(map.Width, map.Height, new ContinentSettings(
+            ContinentCount, LandCoverage / 100, CoastRoughness / 100, seed));
+
+        _map = new TileMap(map.Width, map.Height, map.OriginX, map.OriginY, coordinate =>
+            land[((coordinate.Y - map.OriginY) * map.Width) + (coordinate.X - map.OriginX)]
+                ? BuildLandTile(coordinate)
+                : BuildOceanTile(coordinate));
+
+        // The tiles the pointer was over are gone, and the view is left where it is: the map
+        // is the same size and the same place, and someone watching a coastline appear should
+        // not have to find their way back to it.
+        _hovered = null;
+        _selected = null;
+
+        Tiles = _map.Tiles;
+    }
+
+    /// <summary>Whether there is a map to build on and a seed to build with.</summary>
+    private bool CanBuildContinents() => _map is not null && TryReadSeed(ContinentSeed, out _);
+
+    /// <summary>Fills the seed box with a new one, for the button beside it.</summary>
+    [RelayCommand]
+    private void NewSeed() =>
+        ContinentSeed = Random.Shared.Next(1, 1_000_000).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>The seed as typed. Any whole number, negatives included.</summary>
+    private static bool TryReadSeed(string? text, out int seed) => int.TryParse(text, out seed);
+
+    /// <summary>
     /// Builds a map at the size typed into the Start panel and puts it on screen, replacing
     /// whatever was there. Open ocean: every tile deep water at elevation zero, which is the
     /// blank canvas the generator will raise land out of.
@@ -213,6 +356,17 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// </summary>
     private static bool TryReadSize(string? text, out int size) =>
         int.TryParse(text, out size) && size > 0 && size <= MaxMapDimension;
+
+    /// <summary>
+    /// The land panel can only build on a map, and whether there is one changes when the
+    /// tiles do.
+    /// </summary>
+    protected override void OnMapChanged()
+    {
+        BuildContinentsCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(LandSummary));
+        OnPropertyChanged(nameof(HasLandProblem));
+    }
 
     /// <summary>
     /// Builds the render components' caches for a tile size the zoom is heading towards, off
@@ -267,6 +421,19 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         _selected = next;
         Tiles = map.Tiles;
+    }
+
+    /// <summary>
+    /// One tile of continent: grass at elevation 1. One above the sea, which is all
+    /// "above water" needs to mean until there is anything to put on it.
+    /// </summary>
+    private static MapTile BuildLandTile(TileCoordinate coordinate)
+    {
+        var tile = new MapTile { X = coordinate.X, Y = coordinate.Y, Elevation = 1 };
+
+        tile.SetBaseGroundType(MapRenderComponentConstants.Grass);
+
+        return tile;
     }
 
     /// <summary>

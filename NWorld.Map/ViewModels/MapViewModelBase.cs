@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using NWorld.Map.Interfaces;
@@ -284,6 +284,20 @@ namespace NWorld.Map.ViewModels
         /// Whether there is a map is a fact about <see cref="Tiles"/>, and every derived view
         /// model would otherwise have to remember to say so itself.
         /// </summary>
-        partial void OnTilesChanged(TileGrid? value) => OnPropertyChanged(nameof(HasMap));
+        partial void OnTilesChanged(TileGrid? value)
+        {
+            OnPropertyChanged(nameof(HasMap));
+            OnMapChanged();
+        }
+
+        /// <summary>
+        /// Called after <see cref="Tiles"/> is replaced, for whatever a derived view model
+        /// keeps in step with the map: a command that can only run when there is one, a
+        /// summary of what is on it. Every edit publishes, so this runs often -- a hover is
+        /// an edit -- and anything expensive belongs somewhere else.
+        /// </summary>
+        protected virtual void OnMapChanged()
+        {
+        }
     }
 }

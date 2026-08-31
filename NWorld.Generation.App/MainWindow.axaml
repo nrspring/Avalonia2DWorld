@@ -136,6 +136,50 @@
             <Setter Property="Padding" Value="8,0,0,0" />
         </Style>
 
+        <!-- A slider sized to the panel rather than to a touch screen: the stock one is
+             more than twice this tall, which on a stack of three reads as a form rather than
+             as a row of dials. -->
+        <Style Selector="Border.card Slider">
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style Selector="TextBlock.dial">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style Selector="TextBlock.reading">
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+        </Style>
+
+        <!-- The quiet sibling of the primary button: same shape, no fill, for the actions
+             that sit beside a field rather than finishing a panel. -->
+        <Style Selector="Button.quiet">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="10,4" />
+            <Setter Property="MinHeight" Value="0" />
+        </Style>
+
+        <Style Selector="Button.quiet /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#14FFFFFF" />
+            <Setter Property="BorderBrush" Value="#1FFFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="7" />
+        </Style>
+
+        <Style Selector="Button.quiet:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#24FFFFFF" />
+        </Style>
+
         <!-- ========== the primary button ========== -->
 
         <Style Selector="Button.primary">
@@ -264,6 +308,65 @@
                                     Content="Create"
                                     IsDefault="True"
                                     Command="{Binding CreateMapCommand}" />
+                        </Border>
+
+                    </StackPanel>
+                </Expander>
+            </Border>
+
+            <Border Classes="card">
+                <Expander IsExpanded="True" ToolTip.Tip="{Binding BaseLandHelp}">
+                    <Expander.Header>
+                        <TextBlock Classes="panelTitle" Text="Base Land" />
+                    </Expander.Header>
+
+                    <StackPanel Spacing="10">
+
+                        <TextBlock Classes="field" Text="CONTINENTS" />
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding ContinentCountHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Count" />
+                            <Slider Grid.Column="1" Minimum="1" Maximum="8"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding ContinentCount}" />
+                            <TextBlock Grid.Column="2" Classes="reading" Text="{Binding ContinentCount}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding LandCoverageHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Land" />
+                            <Slider Grid.Column="1" Minimum="5" Maximum="80"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding LandCoverage}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding LandCoverage, StringFormat=\{0:0\}%}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding CoastRoughnessHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Coast" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding CoastRoughness}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding CoastRoughness, StringFormat=\{0:0\}%}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding ContinentSeedHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
+                            <TextBox Grid.Column="1" Text="{Binding ContinentSeed}" Watermark="1" />
+                            <Button Grid.Column="3" Classes="quiet" Content="New"
+                                    Command="{Binding NewSeedCommand}"
+                                    ToolTip.Tip="{Binding ContinentSeedHelp}" />
+                        </Grid>
+
+                        <TextBlock Classes="note"
+                                   Classes.warn="{Binding HasLandProblem}"
+                                   Text="{Binding LandSummary}"
+                                   ToolTip.Tip="{Binding BuildContinentsHelp}" />
+
+                        <Border ToolTip.Tip="{Binding BuildContinentsHelp}" Background="Transparent">
+                            <Button Classes="primary"
+                                    Content="Build Continents"
+                                    Command="{Binding BuildContinentsCommand}" />
                         </Border>
 
                     </StackPanel>
