@@ -10,17 +10,259 @@
         Title="{Binding Title}"
         Width="1000" Height="700"
         MinWidth="640" MinHeight="480"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        WindowState="Maximized">
 
     <Design.DataContext>
         <vm:MainWindowViewModel />
     </Design.DataContext>
 
-    <map:MapView Tiles="{Binding Tiles}"
-                 Renderer="{Binding Renderer}"
-                 Options="{Binding Options}"
-                 HoverCommand="{Binding HoverCommand}"
-                 ClickCommand="{Binding ClickCommand}"
-                 ZoomCommand="{Binding ZoomCommand}" />
+    <Window.Resources>
+        <!-- One accent, used by the button fill and the focus ring, so the panel has a
+             single point of colour against a map that is mostly blue. -->
+        <SolidColorBrush x:Key="Accent" Color="#4C8DFF" />
+        <SolidColorBrush x:Key="TextPrimary" Color="#EEF3FA" />
+        <SolidColorBrush x:Key="TextMuted" Color="#8492A6" />
+        <SolidColorBrush x:Key="TextWarn" Color="#F0A742" />
+    </Window.Resources>
+
+    <Window.Styles>
+
+        <!-- ========== the floating card ========== -->
+
+        <!-- The card carries the whole look: fill, edge, corner, shadow. The Expander inside
+             is stripped back to a hinge, so nothing depends on the shape of the Fluent
+             template except where the chevron sits. -->
+        <Style Selector="Border.card">
+            <Setter Property="BorderBrush" Value="#1FFFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="11" />
+            <Setter Property="BoxShadow" Value="0 14 38 -12 #C0000000" />
+            <Setter Property="Background">
+                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                    <GradientStop Color="#F21C2431" Offset="0" />
+                    <GradientStop Color="#F2121722" Offset="1" />
+                </LinearGradientBrush>
+            </Setter>
+        </Style>
+
+        <Style Selector="Border.card > Expander">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="14,0,14,14" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+        </Style>
+
+        <!-- The header is a ToggleButton in the Expander template. Flattened: the panel is
+             already a surface, and a button-shaped header sitting on it reads as two. -->
+        <Style Selector="Border.card Expander /template/ ToggleButton">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="14,10" />
+            <Setter Property="MinHeight" Value="0" />
+        </Style>
+
+        <Style Selector="Border.card Expander /template/ ToggleButton:pointerover">
+            <Setter Property="Background" Value="#0DFFFFFF" />
+        </Style>
+
+        <Style Selector="Border.card Expander /template/ ToggleButton /template/ Border">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style Selector="TextBlock.panelTitle">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LetterSpacing" Value="0.6" />
+        </Style>
+
+        <!-- ========== fields ========== -->
+
+        <Style Selector="TextBlock.field">
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <Setter Property="FontSize" Value="9.5" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="LetterSpacing" Value="1" />
+            <Setter Property="Margin" Value="2,0,0,3" />
+        </Style>
+
+        <Style Selector="TextBlock.note">
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <Setter Property="FontSize" Value="10.5" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <!-- Amber, not red: an unfinished number is a state to be in, not a mistake. -->
+        <Style Selector="TextBlock.note.warn">
+            <Setter Property="Foreground" Value="{StaticResource TextWarn}" />
+        </Style>
+
+        <Style Selector="Border.card TextBox">
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="CaretBrush" Value="{StaticResource Accent}" />
+        </Style>
+
+        <!-- The Fluent TextBox paints its own fill and edge on this part, per state, so the
+             quiet surface has to be set there or hover puts the stock one back. -->
+        <Style Selector="Border.card TextBox /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="#12FFFFFF" />
+            <Setter Property="BorderBrush" Value="#1FFFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="7" />
+        </Style>
+
+        <Style Selector="Border.card TextBox:pointerover /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="#1AFFFFFF" />
+            <Setter Property="BorderBrush" Value="#33FFFFFF" />
+        </Style>
+
+        <Style Selector="Border.card TextBox:focus /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="#1AFFFFFF" />
+            <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <!-- ========== the primary button ========== -->
+
+        <Style Selector="Button.primary">
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="0,7" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+
+        <Style Selector="Button.primary /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Background">
+                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                    <GradientStop Color="#5C97FF" Offset="0" />
+                    <GradientStop Color="#3A73E8" Offset="1" />
+                </LinearGradientBrush>
+            </Setter>
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+
+        <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background">
+                <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%,100%">
+                    <GradientStop Color="#6EA5FF" Offset="0" />
+                    <GradientStop Color="#4A82F5" Offset="1" />
+                </LinearGradientBrush>
+            </Setter>
+        </Style>
+
+        <Style Selector="Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#3468D6" />
+        </Style>
+
+        <!-- Flat and quiet rather than a faded blue: a greyed button reads as "not yet",
+             which is what the note under the fields is there to explain. -->
+        <Style Selector="Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#14FFFFFF" />
+        </Style>
+
+        <Style Selector="Button.primary:disabled">
+            <Setter Property="Foreground" Value="#66768A" />
+        </Style>
+
+        <!-- ========== tooltips ========== -->
+
+        <!-- Every control in the panel carries one, so they are part of the design rather
+             than a stock box: the card's own surface, room for a paragraph, and a delay
+             short enough to feel like an answer to pointing at something. -->
+        <Style Selector="ToolTip">
+            <Setter Property="Background" Value="#F51B2330" />
+            <Setter Property="BorderBrush" Value="#26FFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="11,9" />
+            <Setter Property="MaxWidth" Value="300" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="Foreground" Value="#DCE4EE" />
+        </Style>
+
+    </Window.Styles>
+
+    <!-- The map fills the window; the tool stack floats over it. A Panel rather than a
+         DockPanel or a two-column Grid, so the menu costs the map no room: it is furniture
+         over the map, not a sidebar beside it. -->
+    <Panel>
+
+        <map:MapView Tiles="{Binding Tiles}"
+                     Renderer="{Binding Renderer}"
+                     Options="{Binding Options}"
+                     HoverCommand="{Binding HoverCommand}"
+                     ClickCommand="{Binding ClickCommand}"
+                     ZoomCommand="{Binding ZoomCommand}" />
+
+        <!-- The accordion. One card per panel, stacked; further panels go in here beside
+             Start and need nothing else. Fixed width rather than a share of the window, so
+             the fields keep their proportions however wide the map gets. -->
+        <StackPanel HorizontalAlignment="Left"
+                    VerticalAlignment="Top"
+                    Margin="16"
+                    Width="252"
+                    Spacing="8">
+
+            <Border Classes="card">
+                <!-- The panel's own tooltip sits on the Expander, so it answers a hover
+                     anywhere on the header row rather than only on the four letters of the
+                     word. The controls inside carry their own and override it. -->
+                <Expander IsExpanded="True" ToolTip.Tip="{Binding StartHelp}">
+                    <Expander.Header>
+                        <TextBlock Classes="panelTitle" Text="Start" />
+                    </Expander.Header>
+
+                    <StackPanel Spacing="10">
+
+                        <Grid ColumnDefinitions="*,8,*">
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Classes="field" Text="WIDTH"
+                                           ToolTip.Tip="{Binding WidthHelp}" />
+                                <TextBox Text="{Binding NewMapWidth}" Watermark="64"
+                                         ToolTip.Tip="{Binding WidthHelp}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Classes="field" Text="HEIGHT"
+                                           ToolTip.Tip="{Binding HeightHelp}" />
+                                <TextBox Text="{Binding NewMapHeight}" Watermark="48"
+                                         ToolTip.Tip="{Binding HeightHelp}" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- What Create is about to make, or why it will not press. The
+                             button disables itself on the same test this line describes. -->
+                        <TextBlock Classes="note"
+                                   Classes.warn="{Binding HasSizeProblem}"
+                                   Text="{Binding SizeSummary}"
+                                   ToolTip.Tip="{Binding CreateHelp}" />
+
+                        <!-- A disabled Button takes no pointer input, so a tooltip on the
+                             button itself would be the one nobody can reach at the moment
+                             they want it. The wrapper stays enabled and carries it. -->
+                        <Border ToolTip.Tip="{Binding CreateHelp}" Background="Transparent">
+                            <Button Classes="primary"
+                                    Content="Create"
+                                    IsDefault="True"
+                                    Command="{Binding CreateMapCommand}" />
+                        </Border>
+
+                    </StackPanel>
+                </Expander>
+            </Border>
+
+        </StackPanel>
+
+    </Panel>
 
 </Window>
