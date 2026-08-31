@@ -148,6 +148,10 @@ namespace NWorld.Map.Controls
         // it can be left out.
         private readonly MiniMapCache _miniMapCache = new();
 
+        // Whether the button that went down inside the inset is still down. While it is,
+        // the pointer is captured and every move it makes is a move of the view.
+        private bool _draggingMiniMap;
+
         private TileCoordinate? _hovered;
 
         // Kept so that a zoom can re-resolve the hover without the pointer having moved.
@@ -278,18 +282,35 @@ namespace NWorld.Map.Controls
             base.OnPointerMoved(e);
 
             _pointer = e.GetPosition(this);
-            SetHovered(ToTile(_pointer.Value));
 
-            // The inset is the one part of the control that answers a click with something
-            // other than a tile, and nothing about it says so. The cursor does.
-            Cursor = MiniMapCommand is not null && MiniMapRequestAt(_pointer.Value) is not null
-                ? PickCursor
-                : null;
+            if (_draggingMiniMap)
+            {
+                // The view follows the pointer until the button comes up, wherever it goes:
+                // dragging to the edge of the inset and then past it is how anyone asks to
+                // keep going, and letting go of the drag because the pointer slipped off a
+                // 160 pixel square would be its own kind of wrong.
+                if (DraggedMiniMapRequest(_pointer.Value) is { } request)
+                    Execute(MiniMapCommand, request);
+
+                // No hover while dragging. The map is sliding under a pointer that is not
+                // pointing at it, and a highlight skidding across the tiles is noise.
+                SetHovered(null);
+                e.Handled = true;
+                return;
+            }
+
+            SetHovered(ToTile(_pointer.Value));
+            UpdateCursor();
         }
 
         protected override void OnPointerExited(PointerEventArgs e)
         {
             base.OnPointerExited(e);
+
+            // Not while dragging: the pointer leaving the control during a capture is
+            // normal, and the drag is still going on.
+            if (_draggingMiniMap)
+                return;
 
             _pointer = null;
             SetHovered(null);
@@ -310,7 +331,13 @@ namespace NWorld.Map.Controls
             if (MiniMapRequestAt(position) is { } request)
             {
                 if (Execute(MiniMapCommand, request))
+                {
+                    // Captured, so the drag that may follow keeps arriving here even once the
+                    // pointer has left the inset -- or the control.
+                    e.Pointer.Capture(this);
+                    _draggingMiniMap = true;
                     e.Handled = true;
+                }
 
                 return;
             }
@@ -324,6 +351,39 @@ namespace NWorld.Map.Controls
             SetHovered(tile);
             Execute(ClickCommand, tile);
             e.Handled = true;
+        }
+
+        protected override void OnPointerReleased(PointerReleasedEventArgs e)
+        {
+            base.OnPointerReleased(e);
+
+            if (!_draggingMiniMap)
+                return;
+
+            _draggingMiniMap = false;
+            e.Pointer.Capture(null);
+            e.Handled = true;
+
+            // Back to whatever the pointer is now over: it may have been let go anywhere,
+            // including over a tile that should light up.
+            if (_pointer is { } position)
+            {
+                SetHovered(ToTile(position));
+                UpdateCursor();
+            }
+        }
+
+        /// <summary>
+        /// Ends the drag when the capture goes elsewhere -- another control taking it, the
+        /// window losing focus mid-drag. Without this the control would think the button was
+        /// still down and pan on the next stray move.
+        /// </summary>
+        protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+        {
+            base.OnPointerCaptureLost(e);
+
+            _draggingMiniMap = false;
+            UpdateCursor();
         }
 
         protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -361,7 +421,9 @@ namespace NWorld.Map.Controls
             // stationary pointer sends no move event to notice it with. Without this the
             // highlight stays on the tile that *was* under the cursor until the mouse is
             // jiggled.
-            if (change.Property == OptionsProperty && _pointer is { } position)
+            // Not while dragging the inset, where the options change on every move and the
+            // tile under the pointer is the inset itself.
+            if (change.Property == OptionsProperty && !_draggingMiniMap && _pointer is { } position)
                 SetHovered(ToTile(position));
         }
 
@@ -375,6 +437,7 @@ namespace NWorld.Map.Controls
             _framePending = false;
             _rateFrames = 0;
             _rateWindowStart = _clock.Elapsed.TotalSeconds;
+            _draggingMiniMap = false;
             _pointer = null;
             Cursor = null;
             SetHovered(null);
@@ -456,12 +519,6 @@ namespace NWorld.Map.Controls
         /// <summary>
         /// A press at <paramref name="position"/> as a <see cref="MiniMapRequest"/>, or null
         /// when it is not inside the mini-map inset.
-        /// <para>
-        /// The inset shows the whole map across its own width, so the map coordinate is that
-        /// fraction of the way across it. Fractional on purpose: the inset is a coarse enough
-        /// instrument already, and rounding the answer to a tile would make it coarser for no
-        /// gain -- a caller centring the view wants the point, not the tile it fell in.
-        /// </para>
         /// </summary>
         private MiniMapRequest? MiniMapRequestAt(Point position)
         {
@@ -474,11 +531,52 @@ namespace NWorld.Map.Controls
                 return null;
             }
 
-            return new MiniMapRequest(
+            return MiniMapRequestFrom(inset, grid, options, position);
+        }
+
+        /// <summary>
+        /// The same, for a pointer that is mid-drag and so allowed to be anywhere. The point
+        /// it names is pinned to the edge of the inset rather than running off the map, which
+        /// is what makes dragging past the corner stop at the corner instead of flinging the
+        /// view into empty space.
+        /// </summary>
+        private MiniMapRequest? DraggedMiniMapRequest(Point position)
+        {
+            var options = Options ?? MapViewOptions.Default;
+
+            if (Tiles is not { } grid || MiniMapRect(Bounds.Size, options) is not { } inset)
+                return null;
+
+            return MiniMapRequestFrom(inset, grid, options, new Point(
+                Math.Clamp(position.X, inset.X, inset.Right),
+                Math.Clamp(position.Y, inset.Y, inset.Bottom)));
+        }
+
+        /// <summary>
+        /// A point inside the inset as the map coordinate it stands for. The inset shows the
+        /// whole map across its own width, so the coordinate is that fraction of the way
+        /// across it -- fractional on purpose, since a caller centring the view wants the
+        /// point and not the tile it happened to fall in.
+        /// </summary>
+        private MiniMapRequest MiniMapRequestFrom(
+            Rect inset, TileGrid grid, MapViewOptions options, Point position) => new(
                 grid.OriginX + ((position.X - inset.X) / inset.Width * grid.Width),
                 grid.OriginY + ((position.Y - inset.Y) / inset.Height * grid.Height),
                 Bounds.Width / options.TileSize,
                 Bounds.Height / options.TileSize);
+
+        /// <summary>
+        /// The hand over the inset, and while a drag from it is still going. The inset is the
+        /// one part of the control that answers a press with something other than a tile, and
+        /// nothing else about it says so.
+        /// </summary>
+        private void UpdateCursor()
+        {
+            var overInset = _pointer is { } position && MiniMapRequestAt(position) is not null;
+
+            Cursor = MiniMapCommand is not null && (overInset || _draggingMiniMap)
+                ? PickCursor
+                : null;
         }
 
         /// <summary>
