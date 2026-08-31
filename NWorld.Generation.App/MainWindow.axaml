@@ -14,6 +14,10 @@
         WindowStartupLocation="CenterScreen"
         WindowState="Maximized">
 
+    <Window.KeyBindings>
+        <KeyBinding Gesture="Ctrl+Z" Command="{Binding UndoCommand}" />
+    </Window.KeyBindings>
+
     <Design.DataContext>
         <vm:MainWindowViewModel />
     </Design.DataContext>
@@ -145,6 +149,12 @@
             <Setter Property="Height" Value="22" />
             <Setter Property="Margin" Value="0" />
             <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style Selector="Border.rule">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Background" Value="#1AFFFFFF" />
+            <Setter Property="Margin" Value="0,4,0,2" />
         </Style>
 
         <Style Selector="TextBlock.dial">
@@ -355,7 +365,7 @@
                             <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
                             <TextBox Grid.Column="1" Text="{Binding ContinentSeed}" Watermark="1" />
                             <Button Grid.Column="3" Classes="quiet" Content="New"
-                                    Command="{Binding NewSeedCommand}"
+                                    Command="{Binding NewContinentSeedCommand}"
                                     ToolTip.Tip="{Binding ContinentSeedHelp}" />
                         </Grid>
 
@@ -368,6 +378,55 @@
                             <Button Classes="primary"
                                     Content="Build Continents"
                                     Command="{Binding BuildContinentsCommand}" />
+                        </Border>
+
+                        <Border Classes="rule" />
+
+                        <TextBlock Classes="field" Text="ISLANDS" />
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding IslandCountHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Count" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="200"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding IslandCount}" />
+                            <TextBlock Grid.Column="2" Classes="reading" Text="{Binding IslandCount}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding IslandSizeHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Size" />
+                            <Slider Grid.Column="1" Minimum="2" Maximum="30"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding IslandSize}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding IslandSize, StringFormat=\{0:0\}t}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding IslandCoastHugHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Hug" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding IslandCoastHug}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding IslandCoastHug, StringFormat=\{0:0\}%}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding IslandSeedHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
+                            <TextBox Grid.Column="1" Text="{Binding IslandSeed}" Watermark="1" />
+                            <Button Grid.Column="3" Classes="quiet" Content="New"
+                                    Command="{Binding NewIslandSeedCommand}"
+                                    ToolTip.Tip="{Binding IslandSeedHelp}" />
+                        </Grid>
+
+                        <TextBlock Classes="note"
+                                   Classes.warn="{Binding HasIslandProblem}"
+                                   Text="{Binding IslandSummary}"
+                                   ToolTip.Tip="{Binding BuildIslandsHelp}" />
+
+                        <Border ToolTip.Tip="{Binding BuildIslandsHelp}" Background="Transparent">
+                            <Button Classes="primary"
+                                    Content="Build Islands"
+                                    Command="{Binding BuildIslandsCommand}" />
                         </Border>
 
                     </StackPanel>
@@ -389,6 +448,14 @@
                                   ToolTip.Tip="{Binding FrameRateHelp}" />
                     </StackPanel>
                 </Expander>
+            </Border>
+
+            <Border ToolTip.Tip="{Binding UndoHelp}" Background="Transparent">
+                <Button Classes="quiet"
+                        Content="Undo"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Command="{Binding UndoCommand}" />
             </Border>
 
         </controls:AccordionPanel>

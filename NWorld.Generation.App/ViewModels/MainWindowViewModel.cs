@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -47,10 +48,40 @@ public partial class MainWindowViewModel : MapViewModelBase
     private const int MaxMapTiles = 1_048_576;
 
     /// <summary>
+    /// How many maps back undo can go.
+    /// <para>
+    /// Whole maps, tiles and all, rather than the settings that produced them or the land
+    /// mask behind them. Both of those are smaller, and both would stop being the map the
+    /// moment a pass writes something a mask cannot hold -- a moisture value, a road. A map
+    /// is the one thing that will always be able to describe a map.
+    /// </para>
+    /// <para>
+    /// Which costs what a map costs, times this: tens of megabytes on a large one. The kept
+    /// maps share nothing with the live one, since every pass builds fresh tiles.
+    /// </para>
+    /// </summary>
+    private const int UndoDepth = 5;
+
+    /// <summary>
     /// The map, or null before one has been made. Replaced rather than refilled when a new
     /// one arrives, so the map a frame may still be drawing from is left whole.
     /// </summary>
     private TileMap? _map;
+
+    /// <summary>
+    /// The land as it stands: continents, plus every island scattered since.
+    /// <para>
+    /// Kept rather than read back off the tiles, because the generators work in masks and a
+    /// mask is what the next pass needs. Islands add to this, so scattering twice leaves two
+    /// scatters; building continents replaces it, which is what clears the islands.
+    /// </para>
+    /// </summary>
+    private bool[]? _land;
+
+    /// <summary>
+    /// Maps as they were before the last few things that changed them, oldest first.
+    /// </summary>
+    private readonly List<MapState> _history = [];
 
     private TileCoordinate? _hovered;
     private TileCoordinate? _selected;
@@ -111,6 +142,35 @@ public partial class MainWindowViewModel : MapViewModelBase
     [NotifyCanExecuteChangedFor(nameof(BuildContinentsCommand))]
     [NotifyPropertyChangedFor(nameof(LandSummary), nameof(HasLandProblem))]
     private string _continentSeed = "1";
+
+    /// <summary>How many islands the next scatter drops.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IslandSummary))]
+    private int _islandCount = 40;
+
+    /// <summary>Average island radius, in tiles.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IslandSummary))]
+    private double _islandSize = 7;
+
+    /// <summary>How strongly islands are drawn to existing coasts, as a percentage.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IslandSummary))]
+    private double _islandCoastHug = 55;
+
+    /// <inheritdoc cref="ContinentSeed"/>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(BuildIslandsCommand))]
+    [NotifyPropertyChangedFor(nameof(IslandSummary), nameof(HasIslandProblem))]
+    private string _islandSeed = "1";
+
+    /// <summary>The undo tooltip.</summary>
+    public string UndoHelp =>
+        "Put the map back as it was before the last thing that changed it.\n\n" +
+        $"Up to {UndoDepth} maps back: making a map, building continents and scattering " +
+        "islands each file the one they replace. Ctrl+Z does the same.\n\n" +
+        "Whole maps are kept, so what comes back is exactly what was there -- not a rebuild " +
+        "from the settings, which have most likely moved on since.";
 
     /// <summary>What the View panel is for.</summary>
     public string ViewHelp =>
@@ -181,6 +241,47 @@ public partial class MainWindowViewModel : MapViewModelBase
          "This replaces everything on the map, including a previous build and anything " +
          "selected. There is no undo yet -- the seed is what gets a world back.@@" +
          "Greyed out until there is a map to build on.").Replace("@@", "\n\n");
+
+    /// <summary>The island-count tooltip.</summary>
+    public string IslandCountHelp =>
+        ("How many islands to scatter.@@" +
+         "A target rather than a promise: an island that can find nowhere to sit -- no water " +
+         "far enough from a coast to hold it -- is dropped rather than forced somewhere " +
+         "silly. Ask for two hundred on a crowded map and you will get fewer.").Replace("@@", "\n\n");
+
+    /// <summary>The island-size tooltip.</summary>
+    public string IslandSizeHelp =>
+        ("Average radius, in tiles. Each island varies either side of it, and none of them " +
+         "are circles.@@" +
+         "Size is what separates an archipelago from a scattering of rocks, and it is also " +
+         "what decides how much room an island needs: a big one has fewer places it can " +
+         "go.").Replace("@@", "\n\n");
+
+    /// <summary>The coast-hug tooltip.</summary>
+    public string IslandCoastHugHelp =>
+        ("How strongly the islands are drawn to land that is already there.@@" +
+         "High, and they crowd the shores as archipelagos and offshore chains. Low, and they " +
+         "are scattered through open water as lone landfalls.@@" +
+         "They never touch the mainland whatever this says: a channel of clear water is " +
+         "always left between an island and the coast it is hugging.").Replace("@@", "\n\n");
+
+    /// <summary>The island-seed tooltip.</summary>
+    public string IslandSeedHelp =>
+        ("Any whole number, and separate from the continents' seed: re-roll the islands as " +
+         "often as you like and the mainland does not move.@@" +
+         "The same seed with the same settings scatters the same islands, every time.").Replace("@@", "\n\n");
+
+    /// <summary>The island build-button tooltip.</summary>
+    public string BuildIslandsHelp =>
+        ("Scatter islands through the sea: grass at elevation 1, the same as a continent.@@" +
+         "They are added to whatever is already there. Press it again for another handful: " +
+         "the islands already placed count as coast for the next lot, which is how a chain " +
+         "grows outwards. Change the seed first, or the same settings will keep finding much " +
+         "the same water.@@" +
+         "Building continents starts the land over and takes the islands with it, since the " +
+         "sea they were placed in has changed.@@" +
+         "Greyed out until there is a map. Without continents it still works, and drops " +
+         "islands into open ocean.").Replace("@@", "\n\n");
 
     /// <summary>
     /// What the Start panel is for, in a sentence. The tooltips on the controls carry the
@@ -285,33 +386,175 @@ public partial class MainWindowViewModel : MapViewModelBase
         if (_map is not { } map || !TryReadSeed(ContinentSeed, out var seed))
             return;
 
-        var land = ContinentBuilder.Build(map.Width, map.Height, new ContinentSettings(
+        Remember();
+
+        // Assigned, never merged: a continent build is where the world starts over. Islands
+        // today and whatever layers on later are all just marks in this one mask, so
+        // replacing it is what clears them -- and any pass added later gets that for free,
+        // as long as it keeps writing here.
+        _land = ContinentBuilder.Build(map.Width, map.Height, new ContinentSettings(
             ContinentCount, LandCoverage / 100, CoastRoughness / 100, seed));
 
+        Raise(map, _land);
+    }
+
+    /// <summary>Whether there is a map to build on and a seed to build with.</summary>
+    private bool CanBuildContinents() => _map is not null && TryReadSeed(ContinentSeed, out _);
+
+    /// <summary>Fills the continent seed box with a new one, for the button beside it.</summary>
+    [RelayCommand]
+    private void NewContinentSeed() =>
+        ContinentSeed = Random.Shared.Next(1, 1_000_000).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>The seed as typed. Any whole number, negatives included.</summary>
+    private static bool TryReadSeed(string? text, out int seed) => int.TryParse(text, out seed);
+
+    /// <summary>
+    /// The line under the island controls: what the next scatter will do, or what is
+    /// stopping it.
+    /// </summary>
+    public string IslandSummary
+    {
+        get
+        {
+            if (Tiles is null)
+                return "Make a map in Start first.";
+
+            if (!TryReadSeed(IslandSeed, out _))
+                return "Seed: any whole number.";
+
+            var where = IslandCoastHug switch
+            {
+                >= 70 => "close in around the coasts",
+                >= 35 => "off the coasts and out to sea",
+                _ => "scattered through open water",
+            };
+
+            return $"Adds up to {IslandCount} more islands, {where}.";
+        }
+    }
+
+    /// <inheritdoc cref="HasSizeProblem"/>
+    public bool HasIslandProblem => !CanBuildIslands();
+
+    /// <summary>
+    /// Scatters islands through the sea around whatever land is already there, as more grass
+    /// at elevation 1.
+    /// <para>
+    /// Added to the map rather than replacing what the last scatter did, so pressing it twice
+    /// leaves twice the islands -- and the second pass sees the first one's islands as coast,
+    /// which is what lets a chain grow outwards a handful at a time.
+    /// </para>
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanBuildIslands))]
+    private void BuildIslands()
+    {
+        if (_map is not { } map || !TryReadSeed(IslandSeed, out var seed))
+            return;
+
+        Remember();
+
+        // No land yet is a map of open ocean, which is a fine thing to drop islands into --
+        // and is what the mask of nothing means.
+        var existing = _land ?? new bool[map.Width * map.Height];
+
+        _land = IslandBuilder.Add(map.Width, map.Height, existing, new IslandSettings(
+            IslandCount, IslandSize, IslandCoastHug / 100, seed));
+
+        Raise(map, _land);
+    }
+
+    /// <summary>Whether there is a map to scatter islands over, and a seed to do it with.</summary>
+    private bool CanBuildIslands() => _map is not null && TryReadSeed(IslandSeed, out _);
+
+    /// <summary>Fills the island seed box with a new one.</summary>
+    [RelayCommand]
+    private void NewIslandSeed() =>
+        IslandSeed = Random.Shared.Next(1, 1_000_000).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Puts the map back as it was before the last build.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanUndo))]
+    private void Undo()
+    {
+        if (_history.Count == 0)
+            return;
+
+        var state = _history[^1];
+        _history.RemoveAt(_history.Count - 1);
+
+        // A map of a different size is a different world; the view has nowhere sensible to
+        // stay, so it goes back to the corner. Same size, and it stays where it was, which
+        // is what makes undoing a build you were watching worth anything.
+        var resized = _map is not { } current
+            || current.Width != state.Map.Width
+            || current.Height != state.Map.Height;
+
+        _map = state.Map;
+        _land = state.Land;
+
+        // Restored rather than cleared: the map still carries the highlights it had when it
+        // was put away, and these are what say where they are.
+        _hovered = state.Hovered;
+        _selected = state.Selected;
+
+        if (resized)
+            Options = Options with { OriginX = 0, OriginY = 0 };
+
+        Tiles = _map.Tiles;
+    }
+
+    /// <summary>Whether there is anything to go back to.</summary>
+    private bool CanUndo() => _history.Count > 0;
+
+    /// <summary>
+    /// Files the map as it stands, for undo to come back to. Called by everything that
+    /// replaces it.
+    /// <para>
+    /// The map itself, not a copy: a pass builds a new <see cref="TileMap"/> rather than
+    /// editing this one, so what is filed here stops changing the moment it is filed.
+    /// </para>
+    /// </summary>
+    private void Remember()
+    {
+        if (_map is not { } map)
+            return;
+
+        _history.Add(new MapState(map, _land, _hovered, _selected));
+
+        // Oldest first out. A deeper history is a memory decision rather than a design one.
+        if (_history.Count > UndoDepth)
+            _history.RemoveAt(0);
+
+        UndoCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Rebuilds the map from a land mask: grass at elevation 1 where it says land, deep water
+    /// at 0 everywhere else.
+    /// <para>
+    /// A rebuild rather than an edit, for both passes. Every tile is decided by the same
+    /// mask, which is the fastest way to touch all of them and what makes a build repeatable:
+    /// the map that comes out depends on the settings and the seed, never on what was there
+    /// before.
+    /// </para>
+    /// </summary>
+    private void Raise(TileMap map, bool[] land)
+    {
         _map = new TileMap(map.Width, map.Height, map.OriginX, map.OriginY, coordinate =>
             land[((coordinate.Y - map.OriginY) * map.Width) + (coordinate.X - map.OriginX)]
                 ? BuildLandTile(coordinate)
                 : BuildOceanTile(coordinate));
 
         // The tiles the pointer was over are gone, and the view is left where it is: the map
-        // is the same size and the same place, and someone watching a coastline appear should
-        // not have to find their way back to it.
+        // is the same size and in the same place, and someone watching a coastline appear
+        // should not have to find their way back to it.
         _hovered = null;
         _selected = null;
 
         Tiles = _map.Tiles;
     }
-
-    /// <summary>Whether there is a map to build on and a seed to build with.</summary>
-    private bool CanBuildContinents() => _map is not null && TryReadSeed(ContinentSeed, out _);
-
-    /// <summary>Fills the seed box with a new one, for the button beside it.</summary>
-    [RelayCommand]
-    private void NewSeed() =>
-        ContinentSeed = Random.Shared.Next(1, 1_000_000).ToString(CultureInfo.InvariantCulture);
-
-    /// <summary>The seed as typed. Any whole number, negatives included.</summary>
-    private static bool TryReadSeed(string? text, out int seed) => int.TryParse(text, out seed);
 
     /// <summary>
     /// Builds a map at the size typed into the Start panel and puts it on screen, replacing
@@ -326,7 +569,10 @@ public partial class MainWindowViewModel : MapViewModelBase
         if (!TryReadSize(NewMapWidth, out var width) || !TryReadSize(NewMapHeight, out var height))
             return;
 
+        Remember();
+
         _map = new TileMap(width, height, fill: BuildOceanTile);
+        _land = null;
 
         // The pointer may well be over the control already, but it is over a different map
         // now, and the highlights it left behind belong to tiles that no longer exist. The
@@ -364,8 +610,13 @@ public partial class MainWindowViewModel : MapViewModelBase
     protected override void OnMapChanged()
     {
         BuildContinentsCommand.NotifyCanExecuteChanged();
+        BuildIslandsCommand.NotifyCanExecuteChanged();
+        UndoCommand.NotifyCanExecuteChanged();
+
         OnPropertyChanged(nameof(LandSummary));
         OnPropertyChanged(nameof(HasLandProblem));
+        OnPropertyChanged(nameof(IslandSummary));
+        OnPropertyChanged(nameof(HasIslandProblem));
     }
 
     /// <summary>
@@ -422,6 +673,12 @@ public partial class MainWindowViewModel : MapViewModelBase
         _selected = next;
         Tiles = map.Tiles;
     }
+
+    /// <summary>
+    /// A map as it was, and the two coordinates that say what is highlighted on it.
+    /// </summary>
+    private readonly record struct MapState(
+        TileMap Map, bool[]? Land, TileCoordinate? Hovered, TileCoordinate? Selected);
 
     /// <summary>
     /// One tile of continent: grass at elevation 1. One above the sea, which is all
