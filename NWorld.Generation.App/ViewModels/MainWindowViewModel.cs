@@ -125,6 +125,20 @@ public partial class MainWindowViewModel : ViewModelBase
     public IMapRenderer Renderer => _renderer;
 
     /// <summary>
+    /// Whether the map view runs its repaint loop, which is what makes the water move.
+    /// A view of the map rather than a fact about it, so it lives in <see cref="Options"/>.
+    /// </summary>
+    public bool IsAnimated
+    {
+        get => Options.IsAnimated;
+        set
+        {
+            if (Options.IsAnimated != value)
+                Options = Options with { IsAnimated = value };
+        }
+    }
+
+    /// <summary>
     /// Whether the map view draws its frame-rate label. A view of the map rather than a fact
     /// about it, which is why it lives in <see cref="Options"/> and not on the map.
     /// </summary>
@@ -142,6 +156,15 @@ public partial class MainWindowViewModel : ViewModelBase
     public string ViewHelp =>
         "How the map is drawn, as opposed to what is on it.\n\n" +
         "Nothing here changes a single tile, so none of it can be got wrong.";
+
+    /// <summary>The animation toggle's tooltip.</summary>
+    public string AnimationHelp =>
+        "Keep repainting the map so the water moves.\n\n" +
+        "Water is the only ground that animates; everything else is drawn from a cached " +
+        "atlas and looks the same either way.\n\n" +
+        "Turning it off stops the repaint loop altogether, so the map is redrawn only when " +
+        "something changes it. That costs nothing while the map sits idle, and it leaves " +
+        "the frame rate with nothing to measure.";
 
     /// <summary>The frame-rate toggle's tooltip.</summary>
     public string FrameRateHelp =>
@@ -270,7 +293,11 @@ public partial class MainWindowViewModel : ViewModelBase
     /// Keeps the properties that read out of <see cref="Options"/> in step with it, however
     /// it was replaced -- the toggle's own setter is only one of the ways it moves.
     /// </summary>
-    partial void OnOptionsChanged(MapViewOptions value) => OnPropertyChanged(nameof(ShowFrameRate));
+    partial void OnOptionsChanged(MapViewOptions value)
+    {
+        OnPropertyChanged(nameof(IsAnimated));
+        OnPropertyChanged(nameof(ShowFrameRate));
+    }
 
     /// <summary>
     /// Moves the hover highlight. Called with null when the pointer leaves the control.

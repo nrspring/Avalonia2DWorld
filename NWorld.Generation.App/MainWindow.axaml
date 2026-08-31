@@ -274,7 +274,10 @@
                         <TextBlock Classes="panelTitle" Text="View" />
                     </Expander.Header>
 
-                    <StackPanel Spacing="10">
+                    <StackPanel Spacing="8">
+                        <CheckBox Content="Animations"
+                                  IsChecked="{Binding IsAnimated}"
+                                  ToolTip.Tip="{Binding AnimationHelp}" />
                         <CheckBox Content="Frame rate"
                                   IsChecked="{Binding ShowFrameRate}"
                                   ToolTip.Tip="{Binding FrameRateHelp}" />

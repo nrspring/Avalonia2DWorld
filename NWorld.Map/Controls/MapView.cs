@@ -99,9 +99,23 @@ namespace NWorld.Map.Controls
         // that a change made while watching it shows up as an answer rather than a drift.
         private const double RateWindowSeconds = 0.5;
 
+        // The most animation time one frame may cover. A longer gap than this is a stall or a
+        // resume rather than a slow frame -- a minimised window, a breakpoint, animation
+        // switched back on -- and swallowing it costs a hitch, where spending it would jump
+        // every wave on the map to a phase nobody watched it reach.
+        private const double MaxAnimationStep = 0.25;
+
         // One clock for the control's whole life, sampled once per frame and handed to every
         // tile in it. Never a frame counter: that would tie animation speed to frame rate.
         private readonly Stopwatch _clock = Stopwatch.StartNew();
+
+        // The animation clock, and the wall clock reading it was last advanced from. Not
+        // the wall clock itself: this one stops when the repaint loop does. Without that,
+        // any frame the control was asked for while paused -- a hover, a zoom -- would draw
+        // the water at the time it arrived, and the mouse would work as a scrub bar over an
+        // animation that is supposed to be still.
+        private double _animationSeconds;
+        private double _lastFrameSeconds;
 
         private TileCoordinate? _hovered;
 
@@ -196,12 +210,13 @@ namespace NWorld.Map.Controls
             // Counted here rather than at the top of the method, so what is measured is
             // frames that drew a map: the early return above is not a frame at 0ms.
             var now = _clock.Elapsed.TotalSeconds;
-            MeasureFrameRate(now);
+            MeasureFrameRate(now, options.IsAnimated);
+            AdvanceAnimation(now, options.IsAnimated);
 
             context.Custom(new MapDrawOperation(
                 new Rect(Bounds.Size),
                 renderer,
-                new RenderFrame(options.TileSize, (float)now),
+                new RenderFrame(options.TileSize, (float)_animationSeconds),
                 tiles,
                 OriginPixels(options),
                 MiniMapRect(Bounds.Size, options),
@@ -299,10 +314,43 @@ namespace NWorld.Map.Controls
         }
 
         /// <summary>
+        /// Moves the animation clock on by the time this frame covers, or holds it where it
+        /// is while the repaint loop is off.
+        /// <para>
+        /// Held rather than reset, so switching animation back on carries on from the water
+        /// that is on screen instead of snapping to whatever phase the wall clock had
+        /// reached in the meantime.
+        /// </para>
+        /// </summary>
+        private void AdvanceAnimation(double now, bool animated)
+        {
+            if (animated)
+                _animationSeconds += Math.Min(now - _lastFrameSeconds, MaxAnimationStep);
+
+            // Recorded either way: the gap that matters is the one since the last frame that
+            // was drawn, not since the last one that moved the animation on.
+            _lastFrameSeconds = now;
+        }
+
+        /// <summary>
         /// Folds this frame into the rate, and republishes the average when the window is up.
         /// </summary>
-        private void MeasureFrameRate(double now)
+        /// <param name="animated">
+        /// Whether the repaint loop is running. When it is not, the rate is dropped rather
+        /// than measured: the frames still arriving are the ones a hover or a zoom asked for,
+        /// and averaging those would report how fast the mouse is moving. The label reads a
+        /// dash instead, which is the truth -- there is no frame rate to have.
+        /// </param>
+        private void MeasureFrameRate(double now, bool animated)
         {
+            if (!animated)
+            {
+                _rateFrames = 0;
+                _rateWindowStart = now;
+                _framesPerSecond = 0;
+                return;
+            }
+
             _rateFrames++;
 
             var elapsed = now - _rateWindowStart;
