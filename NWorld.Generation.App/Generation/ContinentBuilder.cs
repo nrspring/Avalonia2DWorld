@@ -148,7 +148,7 @@ public static class ContinentBuilder
             }
         }
 
-        return CutAt(field, coverage);
+        return CutAt(field, width, height, coverage);
     }
 
     /// <summary>
@@ -238,27 +238,149 @@ public static class ContinentBuilder
     }
 
     /// <summary>
-    /// Land for the highest-scoring <paramref name="coverage"/> of the tiles.
+    /// Land for the highest-scoring <paramref name="coverage"/> of the tiles, with any water
+    /// it encloses filled in.
     /// <para>
     /// A sorted copy rather than a threshold anybody has to tune: the number of land tiles is
     /// then exactly the fraction asked for, and the settings that shape the coast cannot
     /// quietly change how much land there is.
     /// </para>
+    /// <para>
+    /// Filling the lakes puts land back, though, which would push the total past what was
+    /// asked for. How much it puts back cannot be predicted from the dials -- it depends on
+    /// how the coast happened to fold -- so the cut is searched for instead: land after
+    /// filling only ever grows as the cut deepens, and that is enough to bisect for the
+    /// shallowest cut that still meets the figure on the dial.
+    /// </para>
+    /// <para>
+    /// Twenty passes over the map, each a mask and a flood. Cheaper than the noise that made
+    /// the field, and it buys a dial that means what it says.
+    /// </para>
     /// </summary>
-    private static bool[] CutAt(double[] field, double coverage)
+    private static bool[] CutAt(double[] field, int width, int height, double coverage)
     {
         var ranked = (double[])field.Clone();
         Array.Sort(ranked);
 
-        var index = Math.Clamp(
-            (int)((1 - coverage) * (ranked.Length - 1)), 0, ranked.Length - 1);
-
-        var threshold = ranked[index];
+        var target = (int)Math.Round(coverage * field.Length);
 
         var land = new bool[field.Length];
-        for (var i = 0; i < field.Length; i++)
-            land[i] = field[i] > threshold;
+
+        // How much land there is if the cut takes this many tiles of coast, once the water
+        // it encloses has been filled in.
+        int Filled(int take)
+        {
+            var threshold = ranked[Math.Clamp(field.Length - take, 0, field.Length - 1)];
+
+            for (var i = 0; i < field.Length; i++)
+                land[i] = field[i] > threshold;
+
+            return FillEnclosedWater(land, width, height);
+        }
+
+        var low = 0;
+        var high = field.Length;
+
+        while (low < high)
+        {
+            var middle = low + ((high - low) / 2);
+
+            if (Filled(middle) >= target)
+                high = middle;
+            else
+                low = middle + 1;
+        }
+
+        // The cut below the one it settled on: land jumps by a whole lake when a cut joins
+        // one to the sea, so the shallowest cut that clears the target can overshoot it by
+        // more than the cut below undershoots. Whichever lands nearer is the honest answer to
+        // a dial that reads as a percentage.
+        var above = Filled(low);
+
+        if (low > 0)
+        {
+            var below = Filled(low - 1);
+
+            if (Math.Abs(target - above) < Math.Abs(target - below))
+                Filled(low);
+        }
 
         return land;
+    }
+
+    /// <summary>
+    /// Turns water that cannot reach the outside into land, and reports how much land there
+    /// is afterwards.
+    /// <para>
+    /// A continent with a sea inside it is a puzzle: nothing in the generator meant to put it
+    /// there, and it reads as a hole rather than as a lake -- the coastline of it is the same
+    /// coastline the ocean has, and there is no river feeding it. Until there is something
+    /// that makes lakes on purpose, water is the sea, and the sea is what you can sail to.
+    /// </para>
+    /// <para>
+    /// Found by flooding inwards from the edges of the map rather than by hunting for
+    /// enclosed pockets: everything the flood does not reach is enclosed, by definition, and
+    /// the flood visits each tile once.
+    /// </para>
+    /// <para>
+    /// Four-neighbour, so a gap that only connects at a corner does not count as a way out --
+    /// a channel a boat cannot pass is not a channel.
+    /// </para>
+    /// </summary>
+    private static int FillEnclosedWater(bool[] land, int width, int height)
+    {
+        var reached = new bool[land.Length];
+        var queue = new int[land.Length];
+        var head = 0;
+        var tail = 0;
+
+        void Enter(int index)
+        {
+            if (land[index] || reached[index])
+                return;
+
+            reached[index] = true;
+            queue[tail++] = index;
+        }
+
+        // Every water tile on the border is the outside, and there is water on the border by
+        // construction -- but a map is only ever as wide as its edges, so this holds even if
+        // the land ran right up to them.
+        for (var x = 0; x < width; x++)
+        {
+            Enter(x);
+            Enter(((height - 1) * width) + x);
+        }
+
+        for (var y = 0; y < height; y++)
+        {
+            Enter(y * width);
+            Enter((y * width) + width - 1);
+        }
+
+        while (head < tail)
+        {
+            var index = queue[head++];
+            var x = index % width;
+            var y = index / width;
+
+            if (x > 0) Enter(index - 1);
+            if (x < width - 1) Enter(index + 1);
+            if (y > 0) Enter(index - width);
+            if (y < height - 1) Enter(index + width);
+        }
+
+        var total = 0;
+
+        for (var i = 0; i < land.Length; i++)
+        {
+            if (!reached[i])
+                land[i] = true;
+
+            if (land[i])
+                total++;
+        }
+
+        return total;
     }
 }
