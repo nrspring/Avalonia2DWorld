@@ -54,6 +54,23 @@ public static class ContinentBuilder
     private const int Octaves = 5;
 
     /// <summary>
+    /// How far the coast noise drags the map itself, as a fraction of a continent radius at
+    /// full roughness.
+    /// <para>
+    /// This is the difference between a shape with a rough edge and a shape that grew. Adding
+    /// noise to the distance field only ever nibbles at the outline it was given, so a circle
+    /// stays recognisably a circle; displacing the <em>coordinates</em> before the outline is
+    /// measured bends the whole landmass, and peninsulas, bays and trailing islands come out
+    /// of the same field that made the continent.
+    /// </para>
+    /// </summary>
+    private const double WarpStrength = 0.5;
+
+    /// <summary>Octaves in the displacement field. Few: warping wants broad drift, and the
+    /// fine detail is what the coast noise is for.</summary>
+    private const int WarpOctaves = 3;
+
+    /// <summary>
     /// Land or sea for every tile, in reading order.
     /// </summary>
     public static bool[] Build(int width, int height, ContinentSettings settings)
@@ -66,7 +83,7 @@ public static class ContinentBuilder
         var roughness = Math.Clamp(settings.Roughness, 0, 1);
 
         var random = new Random(settings.Seed);
-        var noise = new ValueNoise(unchecked((uint)settings.Seed * 2654435761u) + 0x9E37u);
+        var noise = new SimplexNoise(unchecked((uint)settings.Seed * 2654435761u) + 0x9E37u);
 
         var centres = PlaceCentres(width, height, count, coverage, random);
 
@@ -77,12 +94,26 @@ public static class ContinentBuilder
 
         var frequency = CoastFrequency / radius;
 
+        // In tiles. Nothing at all when the coast is meant to be smooth, so the two dials
+        // still meet at "near-circular".
+        var warp = radius * WarpStrength * roughness;
+
         var field = new double[width * height];
 
         for (var y = 0; y < height; y++)
         {
             for (var x = 0; x < width; x++)
             {
+                // Where this tile asks the shape about itself. Displaced by a noise field
+                // of its own, so the question "how far inside am I" is answered about a bent
+                // version of the map -- which is what makes the outline organic rather than
+                // an ellipse with a fringe.
+                var sampleX = x + (warp * noise.Fbm(
+                    (x * frequency) + 11.3, (y * frequency) - 7.9, WarpOctaves));
+
+                var sampleY = y + (warp * noise.Fbm(
+                    (x * frequency) - 4.1, (y * frequency) + 19.7, WarpOctaves));
+
                 // How far inside the nearest continent this tile is: 1 at a centre, 0 at the
                 // nominal coast, negative out at sea.
                 var inland = double.MinValue;
@@ -93,8 +124,8 @@ public static class ContinentBuilder
                     // offset by the continent's angle, then stretch one axis against the
                     // other. A landmass longer one way than the other is most of what makes
                     // it read as a continent rather than as a blob.
-                    var dx = x - centre.X;
-                    var dy = y - centre.Y;
+                    var dx = sampleX - centre.X;
+                    var dy = sampleY - centre.Y;
 
                     var along = ((dx * centre.Cos) + (dy * centre.Sin)) / centre.Aspect;
                     var across = ((dy * centre.Cos) - (dx * centre.Sin)) * centre.Aspect;
@@ -108,10 +139,12 @@ public static class ContinentBuilder
                 // Noise moves the coast in and out. Bounded by the roughness, so a low
                 // setting can only nibble at a circle while a high one can bite lumps out of
                 // it and leave the pieces offshore.
-                var wander = (noise.Fbm(x * frequency, y * frequency, Octaves) * 2) - 1;
+                // Sampled at the displaced position too, so the fine detail follows the
+                // bends rather than cutting across them.
+                var wander = noise.Fbm(sampleX * frequency, sampleY * frequency, Octaves);
 
                 field[(y * width) + x] =
-                    inland + (roughness * 0.9 * wander) - EdgePenalty(x, y, width, height);
+                    inland + (roughness * 0.5 * wander) - EdgePenalty(x, y, width, height);
             }
         }
 
@@ -230,15 +263,74 @@ public static class ContinentBuilder
     }
 
     /// <summary>
-    /// Value noise summed over octaves. Its own rather than the renderers' because that one
-    /// tiles to a period, which is exactly what a one-off landmass must not do.
+    /// Simplex noise, summed over octaves.
+    /// <para>
+    /// Gradient noise rather than value noise, and that is the whole reason it is here.
+    /// Value noise interpolates between numbers sitting on a square lattice, and the lattice
+    /// shows: features line up with the axes and meet at right angles, which on a coastline
+    /// reads as something built rather than something eroded. Gradient noise interpolates
+    /// between <em>slopes</em> on a triangular grid, and has no direction it prefers.
+    /// </para>
+    /// <para>
+    /// Its own rather than the renderers', which tile to a period -- exactly what a one-off
+    /// landmass must not do.
+    /// </para>
     /// </summary>
-    private sealed class ValueNoise(uint seed)
+    private sealed class SimplexNoise
     {
-        /// <summary>Octaves of noise, halving in weight and doubling in frequency. 0 to 1.</summary>
+        /// <summary>Skew and unskew between the square grid this is sampled on and the
+        /// triangular one it is built on.</summary>
+        private static readonly double Skew = 0.5 * (Math.Sqrt(3.0) - 1.0);
+        private static readonly double Unskew = (3.0 - Math.Sqrt(3.0)) / 6.0;
+
+        /// <summary>
+        /// The twelve gradient directions, as the edges of a cube. More than enough in two
+        /// dimensions, and an established set: too few directions and the noise shows them.
+        /// </summary>
+        private static readonly int[,] Gradients =
+        {
+            { 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 },
+            { 1, 0 }, { -1, 0 }, { 1, 0 }, { -1, 0 },
+            { 0, 1 }, { 0, -1 }, { 0, 1 }, { 0, -1 },
+        };
+
+        /// <summary>
+        /// A shuffle of 0..255, laid down twice so a lookup can add two indices without
+        /// wrapping by hand.
+        /// </summary>
+        private readonly byte[] _permutation = new byte[512];
+
+        public SimplexNoise(uint seed)
+        {
+            var order = new byte[256];
+            for (var i = 0; i < 256; i++)
+                order[i] = (byte)i;
+
+            // Fisher-Yates from the seed, so the whole field is determined by it.
+            var state = seed == 0 ? 1u : seed;
+            for (var i = 255; i > 0; i--)
+            {
+                // xorshift: small, fast, and good enough to shuffle a table with.
+                state ^= state << 13;
+                state ^= state >> 17;
+                state ^= state << 5;
+
+                var j = (int)(state % (uint)(i + 1));
+                (order[i], order[j]) = (order[j], order[i]);
+            }
+
+            for (var i = 0; i < 512; i++)
+                _permutation[i] = order[i & 255];
+        }
+
+        /// <summary>
+        /// Octaves of noise, halving in weight and doubling in frequency. Roughly -1 to 1:
+        /// the octaves rarely peak together, so the sum stays well inside its bounds, which
+        /// is what makes a coast wander rather than lurch.
+        /// </summary>
         public double Fbm(double x, double y, int octaves)
         {
-            double sum = 0, amplitude = 0.5, frequency = 1, total = 0;
+            double sum = 0, amplitude = 1, frequency = 1, total = 0;
 
             for (var i = 0; i < octaves; i++)
             {
@@ -251,36 +343,66 @@ public static class ContinentBuilder
             return sum / total;
         }
 
+        /// <summary>
+        /// One octave. The point sits inside a triangle of the skewed grid; each of the
+        /// triangle's three corners contributes its own gradient, faded out by distance, and
+        /// the three are summed.
+        /// </summary>
         private double Noise(double x, double y)
         {
-            var xi = (int)Math.Floor(x);
-            var yi = (int)Math.Floor(y);
+            // Into the skewed grid, where the triangles are right-angled and easy to find.
+            var skew = (x + y) * Skew;
+            var i = Floor(x + skew);
+            var j = Floor(y + skew);
 
-            // Smoothstep between lattice corners: linear interpolation leaves creases along
-            // the lattice that read as a grid once they are a coastline.
-            var xf = x - xi;
-            var yf = y - yi;
-            var u = xf * xf * (3 - (2 * xf));
-            var v = yf * yf * (3 - (2 * yf));
+            // And back out, to get the offset from the corner in real coordinates.
+            var unskew = (i + j) * Unskew;
+            var x0 = x - (i - unskew);
+            var y0 = y - (j - unskew);
 
-            var top = Lerp(Corner(xi, yi), Corner(xi + 1, yi), u);
-            var bottom = Lerp(Corner(xi, yi + 1), Corner(xi + 1, yi + 1), u);
+            // Which half of the cell: lower triangle if the offset leans along x.
+            var i1 = x0 > y0 ? 1 : 0;
+            var j1 = x0 > y0 ? 0 : 1;
 
-            return Lerp(top, bottom, v);
+            var x1 = x0 - i1 + Unskew;
+            var y1 = y0 - j1 + Unskew;
+            var x2 = x0 - 1 + (2 * Unskew);
+            var y2 = y0 - 1 + (2 * Unskew);
+
+            var ii = i & 255;
+            var jj = j & 255;
+
+            var sum =
+                Corner(x0, y0, _permutation[ii + _permutation[jj]] % 12) +
+                Corner(x1, y1, _permutation[ii + i1 + _permutation[jj + j1]] % 12) +
+                Corner(x2, y2, _permutation[ii + 1 + _permutation[jj + 1]] % 12);
+
+            // The factor that brings the sum into -1..1; it falls out of the kernel and the
+            // gradient lengths, and is the usual one for this formulation.
+            return 70.0 * sum;
         }
 
-        private double Corner(int x, int y)
+        /// <summary>
+        /// One corner's contribution: its gradient dotted with the offset to it, faded by a
+        /// radial kernel that reaches zero before the next triangle begins -- which is what
+        /// lets three corners be summed with no seam between cells.
+        /// </summary>
+        private static double Corner(double dx, double dy, int gradient)
         {
-            var hash = seed;
-            hash ^= unchecked((uint)x * 0x9E3779B1u);
-            hash ^= unchecked((uint)y * 0x85EBCA6Bu);
-            hash ^= hash >> 15;
-            hash = unchecked(hash * 0x2545F491u);
-            hash ^= hash >> 13;
+            var falloff = 0.5 - (dx * dx) - (dy * dy);
+            if (falloff < 0)
+                return 0;
 
-            return (hash & 0xFFFFFF) / (double)0xFFFFFF;
+            falloff *= falloff;
+
+            return falloff * falloff * ((Gradients[gradient, 0] * dx) + (Gradients[gradient, 1] * dy));
         }
 
-        private static double Lerp(double a, double b, double t) => a + ((b - a) * t);
+        /// <summary>Floor as an int, which is not what a cast does for negatives.</summary>
+        private static int Floor(double value)
+        {
+            var truncated = (int)value;
+            return value < truncated ? truncated - 1 : truncated;
+        }
     }
 }
