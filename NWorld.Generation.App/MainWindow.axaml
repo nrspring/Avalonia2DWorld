@@ -279,9 +279,39 @@
                                  Spacing="8">
 
             <Border Classes="card">
-                <!-- The panel's own tooltip sits on the Expander, so it answers a hover
-                     anywhere on the header row rather than only on the four letters of the
-                     word. The controls inside carry their own and override it. -->
+                <Expander ToolTip.Tip="{Binding SaveHelp}">
+                    <Expander.Header>
+                        <TextBlock Classes="panelTitle" Text="File" />
+                    </Expander.Header>
+
+                    <StackPanel Spacing="10">
+                        <Grid ColumnDefinitions="*,8,*">
+                            <Border Grid.Column="0" ToolTip.Tip="{Binding LoadHelp}" Background="Transparent">
+                                <Button Classes="quiet"
+                                        Content="Open"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        Click="OnLoadClick" />
+                            </Border>
+
+                            <Border Grid.Column="2" ToolTip.Tip="{Binding SaveHelp}" Background="Transparent">
+                                <Button Classes="quiet"
+                                        Content="Save"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Center"
+                                        IsEnabled="{Binding HasMap}"
+                                        Click="OnSaveClick" />
+                            </Border>
+                        </Grid>
+
+                        <TextBlock Classes="note"
+                                   Classes.warn="{Binding HasFileProblem}"
+                                   Text="{Binding FileStatus}" />
+                    </StackPanel>
+                </Expander>
+            </Border>
+
+            <Border Classes="card">
                 <Expander IsExpanded="True" ToolTip.Tip="{Binding StartHelp}">
                     <Expander.Header>
                         <TextBlock Classes="panelTitle" Text="Start" />

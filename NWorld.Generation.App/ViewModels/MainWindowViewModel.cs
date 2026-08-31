@@ -3,7 +3,10 @@ using System.Collections.Generic;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using System.IO;
+using System.Text.Json;
 using NWorld.Generation.App.Generation;
+using NWorld.Generation.App.Persistence;
 using NWorld.Map.Constants;
 using NWorld.Map.Models;
 using NWorld.Map.ViewModels;
@@ -163,6 +166,31 @@ public partial class MainWindowViewModel : MapViewModelBase
     [NotifyCanExecuteChangedFor(nameof(BuildIslandsCommand))]
     [NotifyPropertyChangedFor(nameof(IslandSummary), nameof(HasIslandProblem))]
     private string _islandSeed = "1";
+
+    /// <summary>
+    /// What the last save or load did, or why it did not. Cleared by nothing: the last thing
+    /// that happened to a file is worth still being able to read a minute later.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasFileProblem))]
+    private string _fileStatus = "No file open.";
+
+    /// <summary>Whether <see cref="FileStatus"/> is a complaint rather than a description.</summary>
+    public bool HasFileProblem { get; private set; }
+
+    /// <summary>The save tooltip.</summary>
+    public string SaveHelp =>
+        "Write the map to a file, with the panel settings alongside it.\n\n" +
+        "The settings are saved because they are how a map is worked on: opening one with " +
+        "the dials back at their defaults means guessing what the coastline came from before " +
+        "another pass can be run over it.\n\n" +
+        "Tiles are stored compressed, so a map is a fraction of what it takes in memory.";
+
+    /// <summary>The load tooltip.</summary>
+    public string LoadHelp =>
+        "Open a map from a file, settings and all.\n\n" +
+        "This replaces the map on screen. It is undoable like any other change, so opening " +
+        "the wrong file costs one Ctrl+Z.";
 
     /// <summary>The undo tooltip.</summary>
     public string UndoHelp =>
@@ -471,6 +499,130 @@ public partial class MainWindowViewModel : MapViewModelBase
     [RelayCommand]
     private void NewIslandSeed() =>
         IslandSeed = Random.Shared.Next(1, 1_000_000).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// Writes the map and the current settings to <paramref name="stream"/>.
+    /// <para>
+    /// Takes a stream rather than a path because choosing the file is the window's job: a
+    /// view model that opened dialogs would be a view model that could not be run without
+    /// one.
+    /// </para>
+    /// </summary>
+    /// <param name="name">What to call the file in the status line.</param>
+    public void Save(Stream stream, string name)
+    {
+        if (Tiles is not { } tiles)
+            return;
+
+        try
+        {
+            MapFile.Save(stream, tiles, new MapSettings
+            {
+                ContinentCount = ContinentCount,
+                LandCoverage = LandCoverage,
+                CoastRoughness = CoastRoughness,
+                ContinentSeed = ContinentSeed,
+                IslandCount = IslandCount,
+                IslandSize = IslandSize,
+                IslandCoastHug = IslandCoastHug,
+                IslandSeed = IslandSeed,
+                TileSize = Options.TileSize,
+                OriginX = Options.OriginX,
+                OriginY = Options.OriginY,
+            });
+
+            Report($"Saved {name}: {tiles.Width} x {tiles.Height} tiles.", problem: false);
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            Report($"Could not save {name}: {error.Message}", problem: true);
+        }
+    }
+
+    /// <summary>
+    /// Reads a map back from <paramref name="stream"/> and puts it on screen, with the
+    /// settings it was saved with.
+    /// </summary>
+    /// <inheritdoc cref="Save" path="/param[@name='name']"/>
+    public void Load(Stream stream, string name)
+    {
+        MapDocument document;
+
+        try
+        {
+            document = MapFile.Load(stream);
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or JsonException)
+        {
+            Report($"Could not open {name}: {error.Message}", problem: true);
+            return;
+        }
+
+        Remember();
+
+        _map = document.Map;
+
+        // Rebuilt from the tiles rather than saved: the mask is a summary of the map, and a
+        // summary that can be recomputed is a summary that cannot go stale.
+        _land = LandMask(document.Map.Tiles);
+
+        _hovered = null;
+        _selected = null;
+
+        Apply(document.Settings);
+
+        Tiles = _map.Tiles;
+
+        Report($"Opened {name}: {_map.Width} x {_map.Height} tiles.", problem: false);
+    }
+
+    /// <summary>
+    /// Puts the panels back where they were when the map was saved. Anything the file did not
+    /// carry is left as it is, which is what lets an older file open in a newer build.
+    /// </summary>
+    private void Apply(MapSettings settings)
+    {
+        ContinentCount = settings.ContinentCount ?? ContinentCount;
+        LandCoverage = settings.LandCoverage ?? LandCoverage;
+        CoastRoughness = settings.CoastRoughness ?? CoastRoughness;
+        ContinentSeed = settings.ContinentSeed ?? ContinentSeed;
+
+        IslandCount = settings.IslandCount ?? IslandCount;
+        IslandSize = settings.IslandSize ?? IslandSize;
+        IslandCoastHug = settings.IslandCoastHug ?? IslandCoastHug;
+        IslandSeed = settings.IslandSeed ?? IslandSeed;
+
+        // The size boxes describe the next map to be made, and the one just opened is the
+        // best guess at what that should be.
+        NewMapWidth = _map is { } map ? map.Width.ToString(CultureInfo.InvariantCulture) : NewMapWidth;
+        NewMapHeight = _map is { } opened ? opened.Height.ToString(CultureInfo.InvariantCulture) : NewMapHeight;
+
+        Options = Options with
+        {
+            TileSize = settings.TileSize ?? Options.TileSize,
+            OriginX = settings.OriginX ?? 0,
+            OriginY = settings.OriginY ?? 0,
+        };
+    }
+
+    /// <summary>Which tiles are land, for the passes that build on what is already there.</summary>
+    private static bool[] LandMask(TileGrid tiles)
+    {
+        var mask = new bool[tiles.Count];
+
+        for (var i = 0; i < mask.Length; i++)
+            mask[i] = tiles[i].Elevation > 0;
+
+        return mask;
+    }
+
+    /// <summary>Sets the file line, and whether it is bad news.</summary>
+    private void Report(string status, bool problem)
+    {
+        HasFileProblem = problem;
+        FileStatus = status;
+        OnPropertyChanged(nameof(HasFileProblem));
+    }
 
     /// <summary>
     /// Puts the map back as it was before the last build.
