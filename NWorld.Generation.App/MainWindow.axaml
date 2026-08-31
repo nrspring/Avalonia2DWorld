@@ -4,6 +4,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:NWorld.Generation.App.ViewModels"
         xmlns:map="clr-namespace:NWorld.Map.Controls;assembly=NWorld.Map"
+        xmlns:controls="clr-namespace:NWorld.Generation.App.Controls"
         mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
         x:Class="NWorld.Generation.App.MainWindow"
         x:DataType="vm:MainWindowViewModel"
@@ -261,11 +262,11 @@
         <!-- The accordion. One card per panel, stacked; further panels go in here beside
              Start and need nothing else. Fixed width rather than a share of the window, so
              the fields keep their proportions however wide the map gets. -->
-        <StackPanel HorizontalAlignment="Left"
-                    VerticalAlignment="Top"
-                    Margin="16"
-                    Width="252"
-                    Spacing="8">
+        <controls:AccordionPanel HorizontalAlignment="Left"
+                                 VerticalAlignment="Top"
+                                 Margin="16"
+                                 Width="252"
+                                 Spacing="8">
 
             <Border Classes="card">
                 <!-- The panel's own tooltip sits on the Expander, so it answers a hover
@@ -315,7 +316,7 @@
             </Border>
 
             <Border Classes="card">
-                <Expander IsExpanded="True" ToolTip.Tip="{Binding BaseLandHelp}">
+                <Expander ToolTip.Tip="{Binding BaseLandHelp}">
                     <Expander.Header>
                         <TextBlock Classes="panelTitle" Text="Base Land" />
                     </Expander.Header>
@@ -374,7 +375,7 @@
             </Border>
 
             <Border Classes="card">
-                <Expander IsExpanded="True" ToolTip.Tip="{Binding ViewHelp}">
+                <Expander ToolTip.Tip="{Binding ViewHelp}">
                     <Expander.Header>
                         <TextBlock Classes="panelTitle" Text="View" />
                     </Expander.Header>
@@ -390,7 +391,7 @@
                 </Expander>
             </Border>
 
-        </StackPanel>
+        </controls:AccordionPanel>
 
     </Panel>
 
