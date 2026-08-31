@@ -50,6 +50,9 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// </summary>
     private const int MaxMapTiles = 1_048_576;
 
+    /// <summary>Blank line between paragraphs of tooltip text.</summary>
+    private const string DoubleBreak = "\n\n";
+
     /// <summary>
     /// How many maps back undo can go.
     /// <para>
@@ -156,10 +159,13 @@ public partial class MainWindowViewModel : MapViewModelBase
     [NotifyPropertyChangedFor(nameof(IslandSummary))]
     private double _islandSize = 7;
 
-    /// <summary>How strongly islands are drawn to existing coasts, as a percentage.</summary>
+    /// <summary>
+    /// Where in the sea islands prefer to be: 0 is open water, 50 is no preference at all,
+    /// 100 is crowding the coast.
+    /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IslandSummary))]
-    private double _islandCoastHug = 55;
+    private double _islandCoastHug = 50;
 
     /// <inheritdoc cref="ContinentSeed"/>
     [ObservableProperty]
@@ -287,11 +293,16 @@ public partial class MainWindowViewModel : MapViewModelBase
 
     /// <summary>The coast-hug tooltip.</summary>
     public string IslandCoastHugHelp =>
-        ("How strongly the islands are drawn to land that is already there.@@" +
-         "High, and they crowd the shores as archipelagos and offshore chains. Low, and they " +
-         "are scattered through open water as lone landfalls.@@" +
-         "They never touch the mainland whatever this says: a channel of clear water is " +
-         "always left between an island and the coast it is hugging.").Replace("@@", "\n\n");
+        ("Where in the sea the islands prefer to be.@@" +
+         "Halfway is no preference: anywhere there is room. Turn it up and they crowd " +
+         "the shores as archipelagos and offshore chains; turn it down and they are " +
+         "pushed out into open water as lone landfalls.@@" +
+         "Halfway is not the same as either end, because most of the sea on a map with " +
+         "land in it is fairly near that land. Left alone, this gives you the sea as it " +
+         "comes, which reads as more islands near the coasts than far from them.@@" +
+         "They never touch the mainland whatever this says, and they keep the same " +
+         "distance from each other: a channel of clear water is always left.")
+            .Replace("@@", DoubleBreak);
 
     /// <summary>The island-seed tooltip.</summary>
     public string IslandSeedHelp =>
@@ -453,9 +464,11 @@ public partial class MainWindowViewModel : MapViewModelBase
 
             var where = IslandCoastHug switch
             {
-                >= 70 => "close in around the coasts",
-                >= 35 => "off the coasts and out to sea",
-                _ => "scattered through open water",
+                >= 75 => "crowding the coasts",
+                >= 55 => "leaning towards the coasts",
+                > 45 => "wherever there is room",
+                >= 25 => "leaning out to sea",
+                _ => "far out in open water",
             };
 
             return $"Adds up to {IslandCount} more islands, {where}.";

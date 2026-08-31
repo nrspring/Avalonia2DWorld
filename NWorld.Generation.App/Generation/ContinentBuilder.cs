@@ -33,6 +33,10 @@ public readonly record struct ContinentSettings(int Count, double Coverage, doub
 /// reads as a mistake, and the generator has no way of knowing what was supposed to be out
 /// there.
 /// </para>
+/// <para>
+/// What comes out obeys <see cref="LandTopology"/>: no water it is impossible to sail to, and
+/// no land it is impossible to walk to.
+/// </para>
 /// </summary>
 public static class ContinentBuilder
 {
@@ -275,7 +279,11 @@ public static class ContinentBuilder
             for (var i = 0; i < field.Length; i++)
                 land[i] = field[i] > threshold;
 
-            return FillEnclosedWater(land, width, height);
+            // Both rules, then count: what the dial promises is land somebody can stand on
+            // and sail around, so that is what has to add up.
+            LandTopology.FillEnclosedWater(land, width, height);
+
+            return LandTopology.RemoveCornerJoins(land, width, height);
         }
 
         var low = 0;
@@ -306,81 +314,5 @@ public static class ContinentBuilder
         }
 
         return land;
-    }
-
-    /// <summary>
-    /// Turns water that cannot reach the outside into land, and reports how much land there
-    /// is afterwards.
-    /// <para>
-    /// A continent with a sea inside it is a puzzle: nothing in the generator meant to put it
-    /// there, and it reads as a hole rather than as a lake -- the coastline of it is the same
-    /// coastline the ocean has, and there is no river feeding it. Until there is something
-    /// that makes lakes on purpose, water is the sea, and the sea is what you can sail to.
-    /// </para>
-    /// <para>
-    /// Found by flooding inwards from the edges of the map rather than by hunting for
-    /// enclosed pockets: everything the flood does not reach is enclosed, by definition, and
-    /// the flood visits each tile once.
-    /// </para>
-    /// <para>
-    /// Four-neighbour, so a gap that only connects at a corner does not count as a way out --
-    /// a channel a boat cannot pass is not a channel.
-    /// </para>
-    /// </summary>
-    private static int FillEnclosedWater(bool[] land, int width, int height)
-    {
-        var reached = new bool[land.Length];
-        var queue = new int[land.Length];
-        var head = 0;
-        var tail = 0;
-
-        void Enter(int index)
-        {
-            if (land[index] || reached[index])
-                return;
-
-            reached[index] = true;
-            queue[tail++] = index;
-        }
-
-        // Every water tile on the border is the outside, and there is water on the border by
-        // construction -- but a map is only ever as wide as its edges, so this holds even if
-        // the land ran right up to them.
-        for (var x = 0; x < width; x++)
-        {
-            Enter(x);
-            Enter(((height - 1) * width) + x);
-        }
-
-        for (var y = 0; y < height; y++)
-        {
-            Enter(y * width);
-            Enter((y * width) + width - 1);
-        }
-
-        while (head < tail)
-        {
-            var index = queue[head++];
-            var x = index % width;
-            var y = index / width;
-
-            if (x > 0) Enter(index - 1);
-            if (x < width - 1) Enter(index + 1);
-            if (y > 0) Enter(index - width);
-            if (y < height - 1) Enter(index + width);
-        }
-
-        var total = 0;
-
-        for (var i = 0; i < land.Length; i++)
-        {
-            if (!reached[i])
-                land[i] = true;
-
-            if (land[i])
-                total++;
-        }
-
-        return total;
     }
 }

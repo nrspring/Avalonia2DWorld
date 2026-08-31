@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Globalization;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -37,7 +38,11 @@ public partial class MainWindow : Window
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             Title = "Save map",
-            SuggestedFileName = "world",
+            // Stamped, and sortable: saves pile up fast while a world is being tuned, and a
+            // name that sorts by when it was made is the cheapest way to tell the fifth from
+            // the sixth. Seconds included because two saves a minute apart is not the pace
+            // anyone works at here.
+            SuggestedFileName = $"world-{DateTime.Now.ToString("yyyy-MM-dd-HHmmss", CultureInfo.InvariantCulture)}",
             DefaultExtension = MapFile.Extension,
             FileTypeChoices = [MapFileType],
         });
