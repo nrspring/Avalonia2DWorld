@@ -89,6 +89,24 @@ namespace NWorld.Map.Controls
             AvaloniaProperty.Register<MapView, ICommand?>(nameof(ClickCommand));
 
         /// <summary>
+        /// Invoked with a <see cref="MiniMapRequest"/> when the left button goes down inside
+        /// the mini-map inset. The parameter is never null.
+        /// <para>
+        /// Separate from <see cref="ClickCommand"/> because the two mean different things: a
+        /// click on the map is about a tile, and a click on the inset is about the map. The
+        /// inset sits over the tiles it is showing, so a press inside it goes here and
+        /// nowhere else -- the tile underneath is hidden, and nobody aiming at the inset
+        /// meant to pick it.
+        /// </para>
+        /// <para>
+        /// Bind it and the inset becomes a way to move the view; leave it unbound and the
+        /// inset stays what it was, a picture you cannot click.
+        /// </para>
+        /// </summary>
+        public static readonly StyledProperty<ICommand?> MiniMapCommandProperty =
+            AvaloniaProperty.Register<MapView, ICommand?>(nameof(MiniMapCommand));
+
+        /// <summary>
         /// Invoked with a <see cref="MapWheelRequest"/> when the wheel turns over the
         /// control. The parameter is never null.
         /// <para>
@@ -109,6 +127,9 @@ namespace NWorld.Map.Controls
         // switched back on -- and swallowing it costs a hitch, where spending it would jump
         // every wave on the map to a phase nobody watched it reach.
         private const double MaxAnimationStep = 0.25;
+
+        // Held rather than made per pointer move: the pointer moves a great many times.
+        private static readonly Cursor PickCursor = new(StandardCursorType.Hand);
 
         // One clock for the control's whole life, sampled once per frame and handed to every
         // tile in it. Never a frame counter: that would tie animation speed to frame rate.
@@ -190,6 +211,13 @@ namespace NWorld.Map.Controls
             set => SetValue(ClickCommandProperty, value);
         }
 
+        /// <inheritdoc cref="MiniMapCommandProperty"/>
+        public ICommand? MiniMapCommand
+        {
+            get => GetValue(MiniMapCommandProperty);
+            set => SetValue(MiniMapCommandProperty, value);
+        }
+
         /// <inheritdoc cref="ZoomCommandProperty"/>
         public ICommand? ZoomCommand
         {
@@ -233,6 +261,11 @@ namespace NWorld.Map.Controls
                 VisibleWindow(tiles, options),
                 OriginPixels(options),
                 miniMap,
+                new Rect(
+                    options.OriginX,
+                    options.OriginY,
+                    Bounds.Width / options.TileSize,
+                    Bounds.Height / options.TileSize),
                 _miniMapCache,
                 now,
                 options.ShowFrameRate ? _framesPerSecond : null));
@@ -246,6 +279,12 @@ namespace NWorld.Map.Controls
 
             _pointer = e.GetPosition(this);
             SetHovered(ToTile(_pointer.Value));
+
+            // The inset is the one part of the control that answers a click with something
+            // other than a tile, and nothing about it says so. The cursor does.
+            Cursor = MiniMapCommand is not null && MiniMapRequestAt(_pointer.Value) is not null
+                ? PickCursor
+                : null;
         }
 
         protected override void OnPointerExited(PointerEventArgs e)
@@ -263,8 +302,20 @@ namespace NWorld.Map.Controls
             if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
                 return;
 
-            // Null over the mini-map inset, where a click means nothing yet.
-            if (ToTile(e.GetPosition(this)) is not { } tile)
+            var position = e.GetPosition(this);
+
+            // The inset first, since it is drawn over the map: a press inside it is about the
+            // inset, and the tile behind it is not what anyone was pointing at. Handled only
+            // if something took it, so an unbound inset still behaves like the picture it is.
+            if (MiniMapRequestAt(position) is { } request)
+            {
+                if (Execute(MiniMapCommand, request))
+                    e.Handled = true;
+
+                return;
+            }
+
+            if (ToTile(position) is not { } tile)
                 return;
 
             // The pointer is over a tile whether or not a move was seen first -- a touch or a
@@ -325,6 +376,7 @@ namespace NWorld.Map.Controls
             _rateFrames = 0;
             _rateWindowStart = _clock.Elapsed.TotalSeconds;
             _pointer = null;
+            Cursor = null;
             SetHovered(null);
         }
 
@@ -402,6 +454,34 @@ namespace NWorld.Map.Controls
         }
 
         /// <summary>
+        /// A press at <paramref name="position"/> as a <see cref="MiniMapRequest"/>, or null
+        /// when it is not inside the mini-map inset.
+        /// <para>
+        /// The inset shows the whole map across its own width, so the map coordinate is that
+        /// fraction of the way across it. Fractional on purpose: the inset is a coarse enough
+        /// instrument already, and rounding the answer to a tile would make it coarser for no
+        /// gain -- a caller centring the view wants the point, not the tile it fell in.
+        /// </para>
+        /// </summary>
+        private MiniMapRequest? MiniMapRequestAt(Point position)
+        {
+            var options = Options ?? MapViewOptions.Default;
+
+            if (Tiles is not { } grid ||
+                MiniMapRect(Bounds.Size, options) is not { } inset ||
+                !inset.Contains(position))
+            {
+                return null;
+            }
+
+            return new MiniMapRequest(
+                grid.OriginX + ((position.X - inset.X) / inset.Width * grid.Width),
+                grid.OriginY + ((position.Y - inset.Y) / inset.Height * grid.Height),
+                Bounds.Width / options.TileSize,
+                Bounds.Height / options.TileSize);
+        }
+
+        /// <summary>
         /// Pixel position within the control to the tile that covers it, or null over the
         /// mini-map inset.
         /// </summary>
@@ -440,35 +520,46 @@ namespace NWorld.Map.Controls
             (float)Math.Round(options.OriginY * options.TileSize));
 
         /// <summary>
-        /// Where the mini-map inset sits, or null when it is off or the control is too small
-        /// to give it room.
+        /// Where the mini-map inset sits, or null when it is off, there is no map, or the
+        /// control is too small to give it room.
         /// <para>
-        /// Depends only on the control size and the options, never on the tiles -- which is
-        /// what makes it cheap enough for <see cref="ToTile"/> to consult on every move.
+        /// The inset is the shape of the map: <see cref="MapViewOptions.MiniMapSize"/> is the
+        /// longer edge and the other follows the map's proportions. A fixed square would have
+        /// to either letterbox a map that is not square or crop it, and cropping is the worse
+        /// of the two -- an overview that leaves out the part you are not looking at is not
+        /// an overview.
+        /// </para>
+        /// <para>
+        /// Depends on the map only through its width and height, which the grid carries, so
+        /// this is still cheap enough for <see cref="ToTile"/> to consult on every move.
         /// </para>
         /// </summary>
-        private static Rect? MiniMapRect(Size bounds, MapViewOptions options)
+        private Rect? MiniMapRect(Size bounds, MapViewOptions options)
         {
-            if (options.MiniMap == MiniMapLocation.Off)
+            if (options.MiniMap == MiniMapLocation.Off || Tiles is not { } grid)
                 return null;
 
-            double size = options.MiniMapSize;
+            double budget = options.MiniMapSize;
             double margin = options.MiniMapMargin;
+
+            var size = grid.Width >= grid.Height
+                ? new Size(budget, budget * grid.Height / grid.Width)
+                : new Size(budget * grid.Width / grid.Height, budget);
 
             // Dropped rather than shrunk when it will not fit: an inset scaled down to suit a
             // narrow window stops being readable long before it stops fitting.
-            if (bounds.Width < size + (2 * margin) || bounds.Height < size + (2 * margin))
+            if (bounds.Width < size.Width + (2 * margin) || bounds.Height < size.Height + (2 * margin))
                 return null;
 
             var left = options.MiniMap is MiniMapLocation.UpperLeft or MiniMapLocation.LowerLeft
                 ? margin
-                : bounds.Width - size - margin;
+                : bounds.Width - size.Width - margin;
 
             var top = options.MiniMap is MiniMapLocation.UpperLeft or MiniMapLocation.UpperRight
                 ? margin
-                : bounds.Height - size - margin;
+                : bounds.Height - size.Height - margin;
 
-            return new Rect(left, top, size, size);
+            return new Rect(left, top, size.Width, size.Height);
         }
 
         private void SetHovered(TileCoordinate? tile)
@@ -637,6 +728,7 @@ namespace NWorld.Map.Controls
             IReadOnlyList<MapTile> visible,
             SKPoint originPixels,
             Rect? miniMap,
+            Rect viewportTiles,
             MiniMapCache miniMapCache,
             double nowSeconds,
             double? framesPerSecond) : ICustomDrawOperation
@@ -720,7 +812,9 @@ namespace NWorld.Map.Controls
                     (float)inset.X, (float)inset.Y, (float)inset.Width, (float)inset.Height);
 
                 // Whole pixels, because the renderer takes an int tile size -- and at least
-                // one, since a map wider than the inset still has to show something.
+                // one, since a map with more tiles than the inset has pixels still has to
+                // show all of them. The picture is scaled to the inset when it is drawn, so
+                // this only decides how much detail is in it, not how much of the map.
                 var tileSize = Math.Max(
                     1, Math.Min((int)(rect.Width / tiles.Width), (int)(rect.Height / tiles.Height)));
 
@@ -743,35 +837,52 @@ namespace NWorld.Map.Controls
                     using (var backdrop = new SKPaint { Color = new SKColor(0, 0, 0, 170) })
                         canvas.DrawRect(rect, backdrop);
 
-                    var width = tiles.Width * tileSize;
-                    var height = tiles.Height * tileSize;
-
-                    var left = rect.Left + ((rect.Width - width) / 2f);
-                    var top = rect.Top + ((rect.Height - height) / 2f);
-
                     if (snapshot is not null)
                     {
-                        // The picture is built at the display resolution and drawn at the
-                        // control's, so it is shrunk by the display scale and no further --
-                        // which bilinear covers. Nearest would alias that down to a stipple,
-                        // and mip sampling would pay for a reduction that never happens.
+                        // The inset already has the map's proportions, so the whole picture
+                        // goes in the whole box: no crop, no bars, and the scale is the same
+                        // on both axes.
+                        //
+                        // Mip sampling once the picture is being reduced by more than a
+                        // little, which it is on any map with more tiles than the inset has
+                        // pixels; bilinear alone turns that into a stipple of stray tiles.
+                        var reduction = snapshot.Width / Math.Max(1f, rect.Width * deviceScale);
+
                         using var sampling = new SKPaint
                         {
-                            FilterQuality = SKFilterQuality.Low,
+                            FilterQuality = reduction > 1.2f ? SKFilterQuality.Medium : SKFilterQuality.Low,
                             IsAntialias = true,
                         };
 
-                        canvas.DrawImage(snapshot, SKRect.Create(left, top, width, height), sampling);
+                        canvas.DrawImage(snapshot, rect, sampling);
                     }
                     else
                     {
                         // Too big to hold as a picture. Drawn straight through instead, which
                         // is what this always used to do: slower per frame, but a mini-map
                         // that costs a frame is better than one that costs the memory.
-                        canvas.Translate(left - (tiles.OriginX * tileSize), top - (tiles.OriginY * tileSize));
-                        renderer.RenderTiles(canvas, frame with { TileSize = tileSize }, tiles)
-                            .GetAwaiter().GetResult();
+                        //
+                        // Inside its own save: what follows is drawn in the inset's
+                        // coordinates, not in the scaled map ones this needs.
+                        var scaled = canvas.Save();
+                        try
+                        {
+                            canvas.Translate(rect.Left, rect.Top);
+                            canvas.Scale(
+                                rect.Width / (tiles.Width * tileSize),
+                                rect.Height / (tiles.Height * tileSize));
+                            canvas.Translate(-tiles.OriginX * tileSize, -tiles.OriginY * tileSize);
+
+                            renderer.RenderTiles(canvas, frame with { TileSize = tileSize }, tiles)
+                                .GetAwaiter().GetResult();
+                        }
+                        finally
+                        {
+                            canvas.RestoreToCount(scaled);
+                        }
                     }
+
+                    DrawViewport(canvas, rect);
                 }
                 finally
                 {
@@ -791,6 +902,67 @@ namespace NWorld.Map.Controls
                 canvas.DrawRect(
                     new SKRect(rect.Left + 0.5f, rect.Top + 0.5f, rect.Right - 0.5f, rect.Bottom - 0.5f),
                     border);
+            }
+
+            /// <summary>
+            /// Outlines the part of the map that is on screen, inside the inset.
+            /// <para>
+            /// Clipped to the inset rather than drawn wherever the arithmetic lands: the view
+            /// is free to sit past the edge of the map -- a map smaller than the window is
+            /// centred in it, with the view hanging off both sides -- and an outline drawn
+            /// out there would be a white box floating over the map itself.
+            /// </para>
+            /// </summary>
+            private void DrawViewport(SKCanvas canvas, SKRect rect)
+            {
+                var scaleX = rect.Width / tiles.Width;
+                var scaleY = rect.Height / tiles.Height;
+
+                var box = SKRect.Intersect(
+                    new SKRect(
+                        rect.Left + ((float)(viewportTiles.X - tiles.OriginX) * scaleX),
+                        rect.Top + ((float)(viewportTiles.Y - tiles.OriginY) * scaleY),
+                        rect.Left + ((float)(viewportTiles.Right - tiles.OriginX) * scaleX),
+                        rect.Top + ((float)(viewportTiles.Bottom - tiles.OriginY) * scaleY)),
+                    rect);
+
+                // Nothing of the map on screen, or so little that a stroke would be the whole
+                // of it. A box with no inside is worse than no box.
+                if (box.Width < 2f || box.Height < 2f)
+                    return;
+
+                // Half a pixel in, so the stroke sits on whole pixels, and half a pixel off
+                // each edge of the inset so a view that reaches the border still shows a line
+                // rather than half of one under the border's own.
+                box = new SKRect(
+                    Math.Max(box.Left + 0.5f, rect.Left + 0.5f),
+                    Math.Max(box.Top + 0.5f, rect.Top + 0.5f),
+                    Math.Min(box.Right - 0.5f, rect.Right - 0.5f),
+                    Math.Min(box.Bottom - 0.5f, rect.Bottom - 0.5f));
+
+                // A dark line under the white one. The water is dark enough that white reads
+                // on its own most of the time, and pale enough where a crest catches the
+                // light that sometimes it does not.
+                using (var shadow = new SKPaint
+                {
+                    Color = new SKColor(0, 0, 0, 110),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 3f,
+                    IsAntialias = true,
+                })
+                {
+                    canvas.DrawRect(box, shadow);
+                }
+
+                using var outline = new SKPaint
+                {
+                    Color = new SKColor(255, 255, 255, 235),
+                    Style = SKPaintStyle.Stroke,
+                    StrokeWidth = 1.25f,
+                    IsAntialias = true,
+                };
+
+                canvas.DrawRect(box, outline);
             }
 
             /// <summary>

@@ -348,6 +348,33 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Centres the view on a point picked in the mini-map inset.
+    /// <para>
+    /// The zoom level is left alone. Someone pointing at a corner of the overview is saying
+    /// where to look, not how closely, and changing both at once loses them their bearings.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private void MiniMap(MiniMapRequest request)
+    {
+        if (_map is not { } map)
+            return;
+
+        // Half a screen back from the point picked, so the point ends up in the middle
+        // rather than in the top-left corner. Clamped after, by the same rule the zoom uses:
+        // a click near an edge centres on as near it as the map allows.
+        Options = Clamp(
+            Options with
+            {
+                OriginX = request.MapX - (request.ViewportX / 2),
+                OriginY = request.MapY - (request.ViewportY / 2),
+            },
+            map,
+            request.ViewportX,
+            request.ViewportY);
+    }
+
+    /// <summary>
     /// Zooms about the pointer, one step along <see cref="ZoomLevels"/> per wheel notch.
     /// </summary>
     [RelayCommand]
