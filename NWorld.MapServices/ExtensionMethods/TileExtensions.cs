@@ -38,5 +38,16 @@ namespace NWorld.MapServices.ExtensionMethods
                 Params = parameters
             });
         }
+
+        public static void SetElevationLabelType(this Map.Models.MapTile tile,
+                                        Guid elevationLabelType,
+                                        string[]? parameters = null)
+        {
+            tile.SetMapRenderComponent(NWorld.Map.Constants.RenderComponentLayers.ElevationLabel, new Map.Models.MapRenderComponent
+            {
+                ComponentType = elevationLabelType,
+                Params = parameters
+            });
+        }
     }
 }

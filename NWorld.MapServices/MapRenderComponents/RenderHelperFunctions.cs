@@ -30,6 +30,7 @@ namespace NWorld.MapServices.MapRenderComponents
             { MapRenderComponentConstants.Hover, new(RenderHover.Render, RenderHover.Prewarm, RenderHover.ClearCache) },
             { MapRenderComponentConstants.Selected, new(RenderSelected.Render, RenderSelected.Prewarm, RenderSelected.ClearCache) },
             { MapRenderComponentConstants.Range, new(RenderRange.Render) },
+            { MapRenderComponentConstants.ElevationLabel, new(RenderElevationLabel.Render, RenderElevationLabel.Prewarm, RenderElevationLabel.ClearCache) },
         };
 
         /// <summary>

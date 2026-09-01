@@ -92,6 +92,18 @@ public partial class MainWindowViewModel : MapViewModelBase
     private TileCoordinate? _hovered;
     private TileCoordinate? _selected;
 
+    /// <summary>
+    /// Whether the tiles of <see cref="_map"/> carry elevation labels, which is not the same
+    /// question as <see cref="ShowElevation"/>: a map arrives from a file or from undo with
+    /// whatever it was built or saved with, and the two are reconciled by
+    /// <see cref="SyncElevationLabels"/>.
+    /// <para>
+    /// Tracked rather than asked of the map every time, because the answer only ever changes
+    /// where the map does and the pass that would change it touches every tile.
+    /// </para>
+    /// </summary>
+    private bool _labelled;
+
     public MainWindowViewModel()
         : base(
             // One renderer for this view model's one map view: StandardRenderer reuses its
@@ -174,6 +186,21 @@ public partial class MainWindowViewModel : MapViewModelBase
     private string _islandSeed = "1";
 
     /// <summary>
+    /// Whether the land carries its elevation as a number drawn over each tile. The sea does
+    /// not -- see <see cref="IsWater"/>.
+    /// <para>
+    /// A view of the map that is nonetheless made of tiles: the number is a render component
+    /// on <see cref="RenderComponentLayers.ElevationLabel"/> like anything else drawn, so
+    /// turning this on and off is an edit to the map rather than a flag the renderer reads.
+    /// That is what lets the label be drawn by the same batching pass as the ground, and it is
+    /// why this lives here rather than in <see cref="MapViewOptions"/> beside the animation
+    /// and frame-rate toggles.
+    /// </para>
+    /// </summary>
+    [ObservableProperty]
+    private bool _showElevation;
+
+    /// <summary>
     /// What the last save or load did, or why it did not. Cleared by nothing: the last thing
     /// that happened to a file is worth still being able to read a minute later.
     /// </summary>
@@ -219,6 +246,18 @@ public partial class MainWindowViewModel : MapViewModelBase
         "Turning it off stops the repaint loop altogether, so the map is redrawn only when " +
         "something changes it. That costs nothing while the map sits idle, and it leaves " +
         "the frame rate with nothing to measure.";
+
+    /// <summary>The elevation toggle's tooltip.</summary>
+    public string ElevationHelp =>
+        ("Write each land tile's elevation over it. The sea is left clear: it is all at one " +
+         "level anyway, and a field of zeroes would bury the coastline the numbers are read " +
+         "against.@@" +
+         "Unlike the rest of this panel it does change the tiles -- the number is drawn from " +
+         "a component on the tile, the same as the ground under it -- so turning it on for a " +
+         "large map takes a moment. It is not undoable, and it survives a build: raise new " +
+         "continents with this on and the new land comes up labelled.@@" +
+         "Nothing is drawn below a tile size of 12 pixels, where a number would be a smudge. " +
+         "Zoom in if the map goes quiet.").Replace("@@", "\n\n");
 
     /// <summary>The frame-rate toggle's tooltip.</summary>
     public string FrameRateHelp =>
@@ -584,7 +623,13 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         Apply(document.Settings);
 
+        _labelled = IsLabelled(_map.Tiles);
+
         Tiles = _map.Tiles;
+
+        // The file carries whatever labels it was saved with, which need not be what the
+        // panel is asking for now.
+        SyncElevationLabels();
 
         Report($"Opened {name}: {_map.Width} x {_map.Height} tiles.", problem: false);
     }
@@ -667,7 +712,14 @@ public partial class MainWindowViewModel : MapViewModelBase
         if (resized)
             Options = Options with { OriginX = 0, OriginY = 0 };
 
+        // Read off the map rather than filed with it. A history entry can be the very map
+        // that is live -- a hover edits in place -- so what it was labelled with when it was
+        // filed is not necessarily what it is labelled with now.
+        _labelled = IsLabelled(_map.Tiles);
+
         Tiles = _map.Tiles;
+
+        SyncElevationLabels();
     }
 
     /// <summary>Whether there is anything to go back to.</summary>
@@ -712,6 +764,11 @@ public partial class MainWindowViewModel : MapViewModelBase
                 ? BuildLandTile(coordinate)
                 : BuildOceanTile(coordinate));
 
+        // Built labelled or not as the panel asks, which is a pass over the tiles this one
+        // has just made anyway -- cheaper than raising the land and then walking all of it
+        // again to write numbers on it.
+        _labelled = ShowElevation;
+
         // The tiles the pointer was over are gone, and the view is left where it is: the map
         // is the same size and in the same place, and someone watching a coastline appear
         // should not have to find their way back to it.
@@ -738,6 +795,7 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         _map = new TileMap(width, height, fill: BuildOceanTile);
         _land = null;
+        _labelled = ShowElevation;
 
         // The pointer may well be over the control already, but it is over a different map
         // now, and the highlights it left behind belong to tiles that no longer exist. The
@@ -840,6 +898,101 @@ public partial class MainWindowViewModel : MapViewModelBase
     }
 
     /// <summary>
+    /// Puts the labels on or takes them off, so that the map matches what the panel asks for.
+    /// </summary>
+    partial void OnShowElevationChanged(bool value) => SyncElevationLabels();
+
+    /// <summary>
+    /// Writes an elevation label onto every tile, or clears one off every tile, whichever
+    /// <see cref="ShowElevation"/> is asking for.
+    /// <para>
+    /// Every tile, and so a clone of every tile: the map is copy-on-write, which is what makes
+    /// it safe to edit while the renderer walks it. That is the price of the labels being real
+    /// tile data rather than something the renderer decides, and it is why nothing calls this
+    /// unless the map is actually on the wrong side of the toggle. On the largest map allowed
+    /// it is a visible pause; on any map somebody is reading numbers off, it is not.
+    /// </para>
+    /// <para>
+    /// Not undoable. It changes no tile's elevation, ground or highlight, so putting it on the
+    /// history would mean spending an undo slot on something a second click already reverses.
+    /// </para>
+    /// </summary>
+    private void SyncElevationLabels()
+    {
+        if (_map is not { } map || _labelled == ShowElevation)
+            return;
+
+        map.Edit(editor =>
+        {
+            for (var y = 0; y < map.Height; y++)
+            {
+                for (var x = 0; x < map.Width; x++)
+                    editor.Update(new TileCoordinate(map.OriginX + x, map.OriginY + y), Label);
+            }
+        });
+
+        _labelled = ShowElevation;
+
+        Tiles = map.Tiles;
+    }
+
+    /// <summary>
+    /// Gives a tile its elevation label, or takes it away, according to
+    /// <see cref="ShowElevation"/>.
+    /// <para>
+    /// The number is baked into the component's parameters rather than read off the tile at
+    /// draw time, because a render function is handed placements and never the map. A
+    /// component is replaced and never edited, so a tile whose elevation changes gets a fresh
+    /// label along with it -- see the remarks on <see cref="MapTile.Clone"/>.
+    /// </para>
+    /// </summary>
+    private void Label(MapTile tile)
+    {
+        if (ShowElevation && !IsWater(tile))
+            tile.SetElevationLabelType(
+                MapRenderComponentConstants.ElevationLabel,
+                [tile.Elevation.ToString(CultureInfo.InvariantCulture)]);
+        else
+            tile.MapRenderComponents.Remove(RenderComponentLayers.ElevationLabel);
+    }
+
+    /// <summary>
+    /// Whether a tile is sea, and so has no number worth writing on it: the water is all at
+    /// one level by definition, and a map of open ocean covered in zeroes hides the coastline
+    /// that is the only thing the numbers are there to read against.
+    /// <para>
+    /// Asked of the ground drawn on the tile rather than of its elevation. Elevation is the
+    /// thing being labelled, and a rule that read it would be deciding what to show from the
+    /// very number in question -- a lake held above sea level would go unlabelled, and any
+    /// land a later pass leaves at zero would be taken for sea.
+    /// </para>
+    /// </summary>
+    private static bool IsWater(MapTile tile) =>
+        tile.MapRenderComponents.TryGetValue(RenderComponentLayers.BaseGround, out var ground) &&
+        (ground.ComponentType == MapRenderComponentConstants.Water ||
+         ground.ComponentType == MapRenderComponentConstants.DeepWater);
+
+    /// <summary>
+    /// Whether a map carries elevation labels at all.
+    /// <para>
+    /// Every tile, rather than the first one: the sea goes unlabelled, and the top-left corner
+    /// of a generated map is nearly always sea. It stops at the first label it finds, so the
+    /// walk only runs to the end on a map that has none -- which on the largest map allowed is
+    /// a pass over an array, and happens only where a map arrives from a file or from undo.
+    /// </para>
+    /// </summary>
+    private static bool IsLabelled(TileGrid tiles)
+    {
+        for (var i = 0; i < tiles.Count; i++)
+        {
+            if (tiles[i].MapRenderComponents.ContainsKey(RenderComponentLayers.ElevationLabel))
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
     /// A map as it was, and the two coordinates that say what is highlighted on it.
     /// </summary>
     private readonly record struct MapState(
@@ -849,11 +1002,12 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// One tile of continent: grass at elevation 1. One above the sea, which is all
     /// "above water" needs to mean until there is anything to put on it.
     /// </summary>
-    private static MapTile BuildLandTile(TileCoordinate coordinate)
+    private MapTile BuildLandTile(TileCoordinate coordinate)
     {
         var tile = new MapTile { X = coordinate.X, Y = coordinate.Y, Elevation = 1 };
 
         tile.SetBaseGroundType(MapRenderComponentConstants.Grass);
+        Label(tile);
 
         return tile;
     }
@@ -863,11 +1017,12 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// rather than left at its default, because zero is a decision here -- sea level, the
     /// datum everything the generator raises will be measured from.
     /// </summary>
-    private static MapTile BuildOceanTile(TileCoordinate coordinate)
+    private MapTile BuildOceanTile(TileCoordinate coordinate)
     {
         var tile = new MapTile { X = coordinate.X, Y = coordinate.Y, Elevation = 0 };
 
         tile.SetBaseGroundType(MapRenderComponentConstants.DeepWater);
+        Label(tile);
 
         return tile;
     }

@@ -20,5 +20,8 @@ namespace NWorld.MapServices.MapRenderComponents
         public static Guid Hover { get; } = new Guid("66666666-6666-6666-6666-666666666666");
         public static Guid Selected { get; } = new Guid("77777777-7777-7777-7777-777777777777");
         public static Guid Range { get; } = new Guid("88888888-8888-8888-8888-888888888888");
+
+        //Overlay types
+        public static Guid ElevationLabel { get; } = new Guid("99999999-9999-9999-9999-999999999999");
     }
 }

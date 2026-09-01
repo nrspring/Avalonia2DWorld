@@ -476,6 +476,9 @@
                         <CheckBox Content="Frame rate"
                                   IsChecked="{Binding ShowFrameRate}"
                                   ToolTip.Tip="{Binding FrameRateHelp}" />
+                        <CheckBox Content="Elevation"
+                                  IsChecked="{Binding ShowElevation}"
+                                  ToolTip.Tip="{Binding ElevationHelp}" />
                     </StackPanel>
                 </Expander>
             </Border>

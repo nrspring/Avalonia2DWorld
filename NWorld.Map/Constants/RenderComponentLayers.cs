@@ -10,5 +10,6 @@ namespace NWorld.Map.Constants
         public const int BaseGround = 0;
         public const int Hover = 1;
         public const int Unit = 2;
+        public const int ElevationLabel = 10;
     }
 }
