@@ -10,7 +10,7 @@ namespace NWorld.MapServices.ExtensionMethods
                                              Guid baseGroundType,
                                              string[]? parameters = null)
         {
-            tile.SetMapRenderComponent(NWorld.Map.Constants.RenderComponentLayers.BaseGround, new Map.Models.MapRenderComponent
+            tile.SetMapRenderComponent(Constants.RenderComponentLayers.BaseGround, new Map.Models.MapRenderComponent
             {
                 ComponentType = baseGroundType,
                 Params = parameters
@@ -21,7 +21,7 @@ namespace NWorld.MapServices.ExtensionMethods
                                         Guid hoverType,
                                         string[]? parameters = null)
         {
-            tile.SetMapRenderComponent(NWorld.Map.Constants.RenderComponentLayers.Hover, new Map.Models.MapRenderComponent
+            tile.SetMapRenderComponent(Constants.RenderComponentLayers.Hover, new Map.Models.MapRenderComponent
             {
                 ComponentType = hoverType,
                 Params = parameters
@@ -32,7 +32,7 @@ namespace NWorld.MapServices.ExtensionMethods
                                         Guid unitType,
                                         string[]? parameters = null)
         {
-            tile.SetMapRenderComponent(NWorld.Map.Constants.RenderComponentLayers.Unit, new Map.Models.MapRenderComponent
+            tile.SetMapRenderComponent(Constants.RenderComponentLayers.Unit, new Map.Models.MapRenderComponent
             {
                 ComponentType = unitType,
                 Params = parameters
@@ -43,7 +43,7 @@ namespace NWorld.MapServices.ExtensionMethods
                                         Guid elevationLabelType,
                                         string[]? parameters = null)
         {
-            tile.SetMapRenderComponent(NWorld.Map.Constants.RenderComponentLayers.ElevationLabel, new Map.Models.MapRenderComponent
+            tile.SetMapRenderComponent(Constants.RenderComponentLayers.ElevationLabel, new Map.Models.MapRenderComponent
             {
                 ComponentType = elevationLabelType,
                 Params = parameters
