@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -77,11 +77,60 @@ namespace NWorld.MapServices.MapRenderComponents
         // A phase texture spans WaveTiles tiles square. More than one tile so the long waves
         // can be longer than a tile: a texture one tile across could hold nothing bigger than
         // a tile, and the surface would read as ripples in a tray rather than as open water.
-        private const int TargetTextureEdge = 384;
+        private const int TargetTextureEdge = 448;
         private const int MinWaveTiles = 2;
-        private const int MaxWaveTiles = 12;
+
+        // Twenty tiles between repeats rather than twelve. The second reading below is what
+        // really hides the block, but the further apart its copies are the less there is for
+        // it to hide.
+        private const int MaxWaveTiles = 20;
 
         private const long MaxSurfaceBytes = 48L * 1024 * 1024;
+
+        /// <summary>
+        /// How the surface is read a second time, over itself: turned by this many degrees
+        /// and enlarged by this much.
+        /// <para>
+        /// One block repeated across the map is a grid, and the eye finds a grid immediately
+        /// -- the same handful of crests and flecks, in the same arrangement, every few
+        /// tiles, all reaching their peak at the same instant. Reading the same block again
+        /// at an angle and a scale that share no common measure with it lays a second period
+        /// over the first, and the two together do not come back into step anywhere on any
+        /// map anyone will make.
+        /// </para>
+        /// <para>
+        /// Nothing is built for this: it is the same images and the same phases, sampled
+        /// through a different matrix. The cost is one more fill.
+        /// </para>
+        /// </summary>
+        private const float CrossAngle = 63f;
+        private const float CrossScale = 1.37f;
+
+        /// <summary>
+        /// Whether the second reading is also flipped. It is: mirroring sends its swell the
+        /// other way across the map, so the two layers cross rather than march together, and
+        /// a tiling texture mirrors as seamlessly as it repeats.
+        /// </summary>
+        private const bool CrossMirrored = true;
+
+        /// <summary>
+        /// How much of the second reading shows through. Enough to break the pattern, not so
+        /// much that the water becomes an average of two seas and loses its contrast.
+        /// </summary>
+        private const byte CrossAlpha = 84;
+
+        /// <summary>
+        /// How far round the loop the second reading starts, as a fraction of it, and how
+        /// much longer its own loop is.
+        /// <para>
+        /// The two layers then travel out of step as well as out of line: a slow counter
+        /// swell under a quicker chop, which is what stops a screenful of water rising and
+        /// falling all together. A whole-number ratio, so the pair comes back into step at a
+        /// loop of its own rather than jumping when the faster one wraps.
+        /// </para>
+        /// </summary>
+        private const float CrossPhaseOffset = 0.37f;
+        private const float CrossLoopFactor = 2f;
 
         /// <summary>Budget per style, so one kind of water cannot starve another.</summary>
         private const long MaxCacheBytes = 128L * 1024 * 1024;
@@ -205,6 +254,31 @@ namespace NWorld.MapServices.MapRenderComponents
                 TileRuns.Fill(canvas, tiles, tileSize, paint);
             }
 
+            // The same sea read again at an angle, faintly, so the block it is made of stops
+            // being findable -- and on a slower clock of its own, so it reads as a swell
+            // running under the chop rather than a second copy of it.
+            var crossLoop = context.TimeSeconds / (LoopSeconds * CrossLoopFactor);
+            crossLoop -= MathF.Floor(crossLoop);
+
+            var crossPosition = (crossLoop + CrossPhaseOffset) * phases;
+            var crossIndex = (int)crossPosition % phases;
+            var crossBlend = crossPosition - MathF.Floor(crossPosition);
+
+            paint.Shader = surface.CrossShaders[crossIndex];
+            paint.Color = SKColors.White.WithAlpha(CrossAlpha);
+            TileRuns.Fill(canvas, tiles, tileSize, paint);
+
+            // Cross-faded like the first layer, and for the same reason: a step every
+            // fraction of a second reads as a flicker, and a flicker is more findable than
+            // the pattern this is here to hide.
+            var crossAlpha = (byte)(crossBlend * CrossAlpha);
+            if (crossAlpha > 0)
+            {
+                paint.Shader = surface.CrossShaders[(crossIndex + 1) % phases];
+                paint.Color = SKColors.White.WithAlpha(crossAlpha);
+                TileRuns.Fill(canvas, tiles, tileSize, paint);
+            }
+
             // Not left holding a shader the cache may want to dispose.
             paint.Shader = null;
 
@@ -244,11 +318,19 @@ namespace NWorld.MapServices.MapRenderComponents
             /// </summary>
             public required SKShader[] Shaders { get; init; }
 
+            /// <summary>
+            /// The same phases again, read through a turned and enlarged matrix. See
+            /// <see cref="CrossAngle"/>.
+            /// </summary>
+            public required SKShader[] CrossShaders { get; init; }
+
             public required long Bytes { get; init; }
 
             public void Dispose()
             {
                 foreach (var shader in Shaders)
+                    shader.Dispose();
+                foreach (var shader in CrossShaders)
                     shader.Dispose();
                 foreach (var image in Images)
                     image.Dispose();
@@ -274,18 +356,31 @@ namespace NWorld.MapServices.MapRenderComponents
             Parallel.For(0, phases, p => images[p] = BuildPhase(edge, p, phases));
 
             var shaders = new SKShader[phases];
+            var crossShaders = new SKShader[phases];
+
+            // Turned and enlarged about the canvas origin, never translated: the fills that
+            // use these cover runs of tiles with single rects, which is only sound while a
+            // shader's colour at a pixel depends on where that pixel is and not on which rect
+            // covered it.
+            var cross = SKMatrix.CreateScale(CrossMirrored ? -CrossScale : CrossScale, CrossScale)
+                .PostConcat(SKMatrix.CreateRotationDegrees(CrossAngle));
+
             for (var p = 0; p < phases; p++)
             {
-                // No local matrix: the texture is built at exactly the size it repeats at, and
-                // anchoring it to the canvas origin is what puts tile (0,0) on texture (0,0)
-                // and keeps every tile agreeing about where the wave is.
+                // No local matrix on the first: the texture is built at exactly the size it
+                // repeats at, and anchoring it to the canvas origin is what puts tile (0,0) on
+                // texture (0,0) and keeps every tile agreeing about where the wave is.
                 shaders[p] = SKShader.CreateImage(images[p], SKShaderTileMode.Repeat, SKShaderTileMode.Repeat);
+
+                crossShaders[p] = SKShader.CreateImage(
+                    images[p], SKShaderTileMode.Repeat, SKShaderTileMode.Repeat, cross);
             }
 
             return new WaveSurface
             {
                 Images = images,
                 Shaders = shaders,
+                CrossShaders = crossShaders,
                 Bytes = bytesPerPhase * phases,
             };
         }
