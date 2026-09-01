@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using NWorld.MapServices.Constants;
 
 namespace NWorld.Generation.App.Generation;
@@ -31,8 +31,16 @@ public enum GroundCover
 /// than there is lowland gets all the lowland there is and no more.
 /// </param>
 /// <param name="PatchSize">Roughly how many tiles across one patch runs.</param>
+/// <param name="Clustering">
+/// How much the patches gather together, from 0 to 1. At nothing they are sprinkled over
+/// whatever ground suits them, wherever on the map that is; at full they are heaped into a few
+/// districts and the rest of the ground is left clear. It takes no tile away from the coverage
+/// -- it only decides whether what there is arrives spread out or gathered up, though gathered
+/// patches do run into one another and make bigger pieces of it.
+/// </param>
 /// <param name="Seed">Makes a run repeatable.</param>
-public readonly record struct CoverSettings(double Coverage, double PatchSize, int Seed);
+public readonly record struct CoverSettings(
+    double Coverage, double PatchSize, double Clustering, int Seed);
 
 /// <summary>
 /// Spreads swamp and desert over the lowlands, as a cover per tile in reading order.
@@ -69,6 +77,23 @@ public readonly record struct CoverSettings(double Coverage, double PatchSize, i
 /// cannot reach: it wants the deep interior, and it does not care how high it is so long as it
 /// is not a mountain.
 /// </para>
+/// <para>
+/// The three shape dials answer three separate questions, and are built to stay separate. How
+/// much there is, is the coverage. How big one piece of it is, is the patch size. Whether
+/// those pieces arrive spread over the whole map or heaped into a few places, is the
+/// clustering -- a second, much broader field laid over the first, saying where the country is
+/// marshy or sandy as opposed to which tiles of it are. Turning one up does not turn another
+/// down: the cut is still a quantile, so the amount is met to the tile at every setting of the
+/// other two.
+/// </para>
+/// <para>
+/// Gathering does grow the pieces, and it is worth being straight about how. No patch is drawn
+/// any larger -- the grain of the field is the patch size and nothing else touches it -- but
+/// patches crowded into a district run into their neighbours, and what was two marshes with a
+/// mile of grass between them is one marsh. So the count falls and the average piece gets
+/// bigger while the total does not move: on a map at a tenth swamp, ninety-odd patches
+/// averaging thirteen tiles become sixty averaging twenty-two.
+/// </para>
 /// </summary>
 public static class GroundCoverBuilder
 {
@@ -97,6 +122,36 @@ public static class GroundCoverBuilder
     /// a tile is as coastal as it is going to get, or as continental.
     /// </summary>
     private const double SeaReach = 2.5;
+
+    /// <summary>
+    /// How big a district is: a share of the shorter side of the map, so that a handful of
+    /// them fall across it whatever size the map is.
+    /// <para>
+    /// Off the map rather than off the patch size, which is the whole point of the dial being
+    /// its own dial. "Gathered into a few great fens" is a statement about the world, not
+    /// about the grain of the marsh, and tying it to the patch size would mean the districts
+    /// shrank every time somebody asked for finer patches -- which is the coupling the panel
+    /// is built to avoid.
+    /// </para>
+    /// </summary>
+    private const double DistrictShare = 0.45;
+
+    /// <summary>
+    /// The fewest patches a district is ever made wide, whatever the map size says.
+    /// <para>
+    /// A gathering field finer than the thing it gathers is not gathering anything -- it is a
+    /// second patch field, and two patch fields multiplied together are one patch field with
+    /// holes in it. This is what keeps the dial doing what it says on a small map with a
+    /// coarse patch setting.
+    /// </para>
+    /// </summary>
+    private const double MinDistrictPatches = 3;
+
+    /// <summary>
+    /// How many octaves the districts get. Few, deliberately: a district is a broad swell
+    /// saying where the country is marshy, and detail in it would only be patch grain again.
+    /// </summary>
+    private const int DistrictOctaves = 2;
 
     /// <inheritdoc cref="Spread"/>
     public static GroundCover[] SpreadSwamps(
@@ -184,6 +239,13 @@ public static class GroundCoverBuilder
 
         var octaves = SimplexNoise.OctavesFor(patch, MinFeatureTiles, MaxOctaves);
 
+        // Where the country is marshy, or is sand country, as opposed to which tiles of it
+        // are. Broader than a patch by construction -- see MinDistrictPatches -- so what it
+        // does to the ranking is gather patches rather than nibble at them.
+        var clustering = Math.Clamp(settings.Clustering, 0, 1);
+        var district = Math.Max(patch * MinDistrictPatches, Math.Min(width, height) * DistrictShare);
+        var districtFrequency = 1.0 / district;
+
         // The two covers are dealt off the same seed but not the same field, or a swamp and a
         // desert would want exactly the same ground and only the first one pressed would ever
         // get any.
@@ -213,6 +275,18 @@ public static class GroundCoverBuilder
 
                 var patchiness = (noise.Fbm(x * frequency, y * frequency, octaves) + 1) * 0.5;
 
+                // How much this part of the map is the kind of country this cover gathers in.
+                // Sampled off the patch field's own coordinates, or the two would peak
+                // together and the dial between them would do nothing.
+                var gathering = (noise.Fbm(
+                    (x * districtFrequency) + 47.3,
+                    (y * districtFrequency) - 19.6,
+                    DistrictOctaves) + 1) * 0.5;
+
+                // Nothing at all when the dial is down, which is what makes it safe to leave
+                // there: the score is exactly what it was before this dial existed.
+                var gathered = 1 - clustering + (clustering * gathering);
+
                 // 0 at the shore, 1 out in the deep interior.
                 var inland = Math.Min(1, sea[index] / reach);
 
@@ -237,7 +311,7 @@ public static class GroundCoverBuilder
                     weight = 1 - DesertBias + (DesertBias * inland);
                 }
 
-                score[index] = patchiness * weight;
+                score[index] = patchiness * weight * gathered;
             }
         }
 

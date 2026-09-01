@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.IO.Compression;
 using System.Text.Json;
@@ -41,6 +41,7 @@ public sealed record MapSettings
     public double? SwampCoverage { get; init; }
     public double? DesertCoverage { get; init; }
     public double? PatchSize { get; init; }
+    public double? CoverClustering { get; init; }
     public string? CoverSeed { get; init; }
 
     /// <summary>Zoom, as a tile size in pixels, and where the view was looking.</summary>

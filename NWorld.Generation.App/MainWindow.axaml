@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -578,6 +578,17 @@
                                     Value="{Binding PatchSize}" />
                             <TextBlock Grid.Column="2" Classes="reading"
                                        Text="{Binding PatchSize, StringFormat=\{0:0\}t}" />
+                        </Grid>
+
+                        <!-- How big a patch is, and then whether the patches keep company.
+                             Two questions, so two dials. -->
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding ClusteringHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Cluster" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding CoverClustering}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding CoverClustering, StringFormat=\{0:0\}%}" />
                         </Grid>
 
                         <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding CoverSeedHelp}">

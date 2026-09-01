@@ -239,6 +239,15 @@ public partial class MainWindowViewModel : MapViewModelBase
     [NotifyPropertyChangedFor(nameof(SwampSummary), nameof(DesertSummary))]
     private double _patchSize = 18;
 
+    /// <summary>
+    /// How much the patches gather together, as a percentage: nothing spreads them over the
+    /// whole map, full heaps them into a few districts. Shared by both covers, like the patch
+    /// size, because it is a fact about the grain of the world rather than about either one.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SwampSummary), nameof(DesertSummary))]
+    private double _coverClustering;
+
     /// <inheritdoc cref="ContinentSeed"/>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(BuildSwampsCommand), nameof(BuildDesertsCommand))]
@@ -427,8 +436,20 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// <summary>The patch-size tooltip.</summary>
     public string PatchSizeHelp =>
         ("Roughly how many tiles across one patch runs. Shared: it sets the grain of both.@@" +
-         "Small values scatter marshes and sand pans about; large ones give one great fen or " +
-         "one great erg. It does not change how much of either there is.").Replace("@@", "\n\n");
+         "Small values give a lot of little marshes and sand pans; large ones give a few " +
+         "broad ones. It does not change how much of either there is -- only how big one " +
+         "piece of it runs.").Replace("@@", "\n\n");
+
+    /// <summary>The clustering tooltip.</summary>
+    public string ClusteringHelp =>
+        ("How much the patches gather together. Shared, like the patch size.@@" +
+         "At nothing they are sprinkled over whatever ground suits them, wherever on the map " +
+         "that is -- marsh in every hollow, sand in every dry corner. Turn it up and they " +
+         "heap into a few districts instead: one great fen country and one great erg, with " +
+         "the rest of the lowland left clear.@@" +
+         "It takes no tile off the coverage -- the same amount of swamp arrives either way, " +
+         "and no patch is drawn any bigger. But patches heaped together run into their " +
+         "neighbours, so the pieces you end up looking at are fewer and broader.").Replace("@@", "\n\n");
 
     /// <inheritdoc cref="ContinentSeedHelp"/>
     public string CoverSeedHelp =>
@@ -1004,7 +1025,7 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         var cover = pass(
             map.Width, map.Height, relief, CurrentCover(map),
-            new CoverSettings(coverage / 100, PatchSize, seed));
+            new CoverSettings(coverage / 100, PatchSize, CoverClustering / 100, seed));
 
         Rebuild(map, relief, cover);
     }
@@ -1053,6 +1074,7 @@ public partial class MainWindowViewModel : MapViewModelBase
                 SwampCoverage = SwampCoverage,
                 DesertCoverage = DesertCoverage,
                 PatchSize = PatchSize,
+                CoverClustering = CoverClustering,
                 CoverSeed = CoverSeed,
                 TileSize = Options.TileSize,
                 OriginX = Options.OriginX,
@@ -1136,6 +1158,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         SwampCoverage = settings.SwampCoverage ?? SwampCoverage;
         DesertCoverage = settings.DesertCoverage ?? DesertCoverage;
         PatchSize = settings.PatchSize ?? PatchSize;
+        CoverClustering = settings.CoverClustering ?? CoverClustering;
         CoverSeed = settings.CoverSeed ?? CoverSeed;
 
         // The size boxes describe the next map to be made, and the one just opened is the
