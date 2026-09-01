@@ -224,14 +224,24 @@ public static class LandTopology
     /// with nothing but mountain on it is left as it is -- there is no walkable ground on it
     /// to join.
     /// </para>
+    /// <para>
+    /// What is cut is then <see cref="Ease">graded</see>, and this is what makes it a pass
+    /// rather than a hole in the wall. Taking a line of mountain down to one height leaves a
+    /// trench: its floor stands nine above the meadow it opens onto, and a step of nine is not
+    /// a step. Grading it walks the floor up a unit at a time from the ground at either mouth,
+    /// so the crossing climbs to the saddle and comes down the far side, and every tile of it
+    /// has ground beside it within a stride.
+    /// </para>
     /// </summary>
     /// <param name="relief">Elevation per tile, edited in place. Sea is 0.</param>
     /// <param name="mountainFrom">The lowest elevation that counts as impassable.</param>
-    /// <param name="passHeight">What a cut tile is lowered to. Below <paramref name="mountainFrom"/>.</param>
+    /// <param name="passHeight">The highest a cut tile may come out. Below <paramref name="mountainFrom"/>.</param>
+    /// <param name="maxStep">The most a walker climbs in one step, and so the grade of a pass.</param>
     public static int OpenMountainPasses(
-        int[] relief, int width, int height, int mountainFrom, int passHeight)
+        int[] relief, int width, int height, int mountainFrom, int passHeight, int maxStep)
     {
         ArgumentNullException.ThrowIfNull(relief);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxStep);
 
         if (passHeight >= mountainFrom)
             throw new ArgumentOutOfRangeException(
@@ -331,6 +341,9 @@ public static class LandTopology
             return piece;
         }
 
+        // Which tiles the passes are made of, so the grading below touches nothing else: a
+        // range keeps every cliff except the one the pass goes through.
+        var cut = new bool[relief.Length];
         var lowered = 0;
 
         foreach (var (_, near, far) in crossings)
@@ -344,18 +357,94 @@ public static class LandTopology
 
             joined[a] = b;
 
-            lowered += Cut(relief, from, near, mountainFrom, passHeight);
-            lowered += Cut(relief, from, far, mountainFrom, passHeight);
+            lowered += Cut(relief, from, near, mountainFrom, passHeight, cut);
+            lowered += Cut(relief, from, far, mountainFrom, passHeight, cut);
         }
 
+        Ease(relief, cut, width, height, maxStep);
+
         return lowered;
+    }
+
+    /// <summary>
+    /// Walks the floor of every pass down until no tile of one stands more than
+    /// <paramref name="maxStep"/> above the ground beside it, so a crossing can be walked from
+    /// end to end.
+    /// <para>
+    /// Only ever lowers, and only tiles the cut made, so nothing it does can wall a pass back
+    /// up or shave a mountain that is doing its job. Each tile is held to its lowest land
+    /// neighbour plus a step; holding one down lets the next be held down in turn, and the
+    /// grade runs inwards from both mouths until they meet -- which is a ramp up to the saddle
+    /// and down again, cut off wherever the pass was already low enough.
+    /// </para>
+    /// <para>
+    /// The result is a corridor where each tile is within a step of the next, and a walker
+    /// coming off the flat can put a foot on the first of them. Neighbouring tiles of a pass
+    /// end within a step of each other in both directions, not just downhill: the grade
+    /// settles to a distance from the ground at the mouths, and a distance never changes by
+    /// more than one across a single step.
+    /// </para>
+    /// <para>
+    /// Sea is no neighbour here, as everywhere else on this map: a pass that opened onto a
+    /// cliff above the water would otherwise be flattened to the shore.
+    /// </para>
+    /// <para>
+    /// Swept forwards then backwards and repeated until a sweep changes nothing. Heights only
+    /// fall, and never below one step above the walkable ground a pass starts from, so it ends.
+    /// </para>
+    /// </summary>
+    private static void Ease(int[] relief, bool[] cut, int width, int height, int maxStep)
+    {
+        var changed = true;
+
+        while (changed)
+        {
+            changed = false;
+
+            for (var y = 0; y < height; y++)
+            {
+                for (var x = 0; x < width; x++)
+                {
+                    var index = (y * width) + x;
+
+                    if (x > 0) Hold(index, index - 1);
+                    if (y > 0) Hold(index, index - width);
+                }
+            }
+
+            for (var y = height - 1; y >= 0; y--)
+            {
+                for (var x = width - 1; x >= 0; x--)
+                {
+                    var index = (y * width) + x;
+
+                    if (x < width - 1) Hold(index, index + 1);
+                    if (y < height - 1) Hold(index, index + width);
+                }
+            }
+        }
+
+        void Hold(int index, int neighbour)
+        {
+            if (!cut[index] || relief[neighbour] <= 0)
+                return;
+
+            var limit = relief[neighbour] + maxStep;
+
+            if (relief[index] <= limit)
+                return;
+
+            relief[index] = limit;
+            changed = true;
+        }
     }
 
     /// <summary>
     /// Walks back from where two floods met to the walkable ground the flood started on,
     /// lowering every mountain on the way. Returns how many tiles it took down.
     /// </summary>
-    private static int Cut(int[] relief, int[] from, int index, int mountainFrom, int passHeight)
+    private static int Cut(
+        int[] relief, int[] from, int index, int mountainFrom, int passHeight, bool[] cut)
     {
         var lowered = 0;
 
@@ -364,6 +453,10 @@ public static class LandTopology
             if (relief[index] >= mountainFrom)
             {
                 relief[index] = passHeight;
+
+                // Marked for the grading afterwards. This is the height a pass may not exceed,
+                // not the height it comes out at.
+                cut[index] = true;
                 lowered++;
             }
 

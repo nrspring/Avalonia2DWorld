@@ -54,6 +54,21 @@ public readonly record struct TerrainSettings(
 /// relationship: one field, one seed, and a reach.
 /// </para>
 /// <para>
+/// Both passes end by settling the hills, so that no hill stands more than a step above any
+/// ground touching it -- see <see cref="Settle"/>. The band is assigned by rank, and rank
+/// knows only which tile scores higher than which; it has nothing to say about whether two
+/// neighbours are heights a hillside could actually run between. Left alone it puts a nine
+/// beside a two often enough to matter, and a one-tile cliff in the middle of hill country
+/// is read as a mountain by anyone looking at the map.
+/// </para>
+/// <para>
+/// Both, and not only the pass that draws them, because a hill's height is a claim about the
+/// ground around it and either button can move that ground. Raising a range takes the old one
+/// down to flat land before putting the new one up, and every hillside that was resting on
+/// the old range's shoulder is left standing over a meadow. The rule is about the relief as it
+/// ends up, so it is applied wherever the relief stops changing.
+/// </para>
+/// <para>
 /// It also means the two have no dial in common. Ruggedness and range length shape the relief
 /// and so belong to the mountains; the spread belongs to the hills and does nothing to a range.
 /// Only the seed is shared, because a seed is what says which world this is.
@@ -109,6 +124,18 @@ public static class TerrainBuilder
     private const double InlandReach = 1.2;
 
     /// <summary>
+    /// The most a walker climbs in one step, and so the most any walkable tile may stand above
+    /// the land beside it.
+    /// <para>
+    /// One, which is what makes a hill a hill. Anything a walker could not walk up is a crag,
+    /// and the mountains are where the crags belong. The same figure grades the passes cut
+    /// through a range, for the same reason: a crossing nobody can climb into is not a
+    /// crossing.
+    /// </para>
+    /// </summary>
+    private const int MaxStep = 1;
+
+    /// <summary>
     /// An elevation for every tile, in reading order.
     /// </summary>
     /// <param name="land">
@@ -161,6 +188,10 @@ public static class TerrainBuilder
 
         AssignBand(raised, eligible, score, wanted, HillsFrom, HillsTo);
 
+        // The heights rank has handed out, made into slopes something could climb. This takes
+        // no tile out of the hills -- see Settle -- so the coverage dial is still met exactly.
+        Settle(raised, land, width, height);
+
         // No passes to cut. Hills are walkable and so is the flat land they replace, so this
         // moves no tile in or out of the walkable set -- it only changes how high the walk is.
         return raised;
@@ -195,11 +226,20 @@ public static class TerrainBuilder
 
         // Last, over finished heights: a pass is cut through the mountains as they came out,
         // and cutting one before they existed would mean guessing where a range was going to
-        // be. It costs a few tiles of mountain -- the crossings are lowered to hill height --
-        // so the mountain figure is met before the passes are cut rather than after. On the
-        // maps this makes that is a fraction of a percent, and a walled-in valley is a worse
-        // thing to hand somebody than a dial that reads a shade high.
-        LandTopology.OpenMountainPasses(raised, width, height, MountainsFrom, HillsTo);
+        // be. It costs a few tiles of mountain -- the crossings come out at hill height or
+        // below, graded so they can be walked -- so the mountain figure is met before the
+        // passes are cut rather than after. On the maps this makes that is a fraction of a
+        // percent, and a walled-in valley is a worse thing to hand somebody than a dial that
+        // reads a shade high.
+        LandTopology.OpenMountainPasses(raised, width, height, MountainsFrom, HillsTo, MaxStep);
+
+        // The hills, settled again over the heights this pass has left. Raising a range takes
+        // the old one down to flat ground first, and the hillsides that were skirting it are
+        // still standing where its shoulder used to hold them up -- a nine with a meadow
+        // beside it, which is the one thing a hill may not be. Nothing here is the hills'
+        // own business, so this moves no tile into the band or out of it; it only takes back
+        // the height the ground the mountains removed was holding up.
+        Settle(raised, land, width, height);
 
         return raised;
     }
@@ -314,6 +354,98 @@ public static class TerrainBuilder
         }
 
         return widened;
+    }
+
+    /// <summary>
+    /// Brings every hill down until none stands more than <see cref="MaxStep"/> above the
+    /// land beside it: a tile is held to its lowest land neighbour's height plus one, and
+    /// lowering it may in turn hold down the tile beyond, so the whole of the hill country
+    /// comes out as slopes that can be walked.
+    /// <para>
+    /// All eight neighbours, and this is the one place on the map that counts the corners.
+    /// Everywhere else four-way is the rule because four ways is how a unit moves; here the
+    /// rule is about what the land looks like, and a hill standing two above the tile across
+    /// its corner is a step somebody can see whether or not they can walk it. It costs a unit
+    /// of height at the odd corner and nothing else -- a slope that already ran downhill four
+    /// ways runs downhill eight.
+    /// </para>
+    /// <para>
+    /// It only ever lowers, and it cannot lower a hill out of the band. A hill's neighbours on
+    /// land are at flat ground or above, so the floor this can push one to is flat-plus-one,
+    /// which is the foot of the hills. Every tile the rank cut made a hill is still a hill
+    /// afterwards, and the coverage dial stays exact.
+    /// </para>
+    /// <para>
+    /// What it costs is height, and only where the map was making a claim it could not keep:
+    /// a hill is now no higher than its distance from the nearest flat ground allows, so a
+    /// broad upland still reaches the top of the band and a lone tile in the middle of a plain
+    /// no longer does. That is the shape of real hill country, and it is what the spread dial
+    /// was always describing.
+    /// </para>
+    /// <para>
+    /// Mountains are left out of it. A range is allowed its cliffs -- that is most of what
+    /// tells one from an upland -- and a mountain neighbour, standing at eleven or more, never
+    /// holds a hill down in any case.
+    /// </para>
+    /// <para>
+    /// Swept forwards and then backwards, and repeated until a sweep changes nothing. Each
+    /// sweep looks only the way it came, which between them is all eight neighbours. Two
+    /// sweeps carry the constraint across open ground, but not around a headland the sea makes
+    /// it walk about, and heights only ever fall and never below the foot of the band -- so
+    /// the repeat ends, and in practice after the pass that proves it.
+    /// </para>
+    /// </summary>
+    private static void Settle(int[] relief, bool[] land, int width, int height)
+    {
+        var changed = true;
+
+        while (changed)
+        {
+            changed = false;
+
+            for (var y = 0; y < height; y++)
+            {
+                for (var x = 0; x < width; x++)
+                {
+                    var index = (y * width) + x;
+
+                    if (x > 0) Hold(index, index - 1);
+                    if (y > 0) Hold(index, index - width);
+                    if (x > 0 && y > 0) Hold(index, index - width - 1);
+                    if (x < width - 1 && y > 0) Hold(index, index - width + 1);
+                }
+            }
+
+            for (var y = height - 1; y >= 0; y--)
+            {
+                for (var x = width - 1; x >= 0; x--)
+                {
+                    var index = (y * width) + x;
+
+                    if (x < width - 1) Hold(index, index + 1);
+                    if (y < height - 1) Hold(index, index + width);
+                    if (x < width - 1 && y < height - 1) Hold(index, index + width + 1);
+                    if (x > 0 && y < height - 1) Hold(index, index + width - 1);
+                }
+            }
+        }
+
+        // Holds one hill down to what its neighbour allows. Sea is no neighbour at all here:
+        // a shore is a step the coast has already drawn, and counting it would forbid a hill
+        // anywhere within sight of the water.
+        void Hold(int index, int neighbour)
+        {
+            if (relief[index] < HillsFrom || relief[index] > HillsTo || !land[neighbour])
+                return;
+
+            var limit = relief[neighbour] + MaxStep;
+
+            if (relief[index] <= limit)
+                return;
+
+            relief[index] = limit;
+            changed = true;
+        }
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using NWorld.Map.Models;
 using NWorld.MapServices.Constants;
@@ -52,13 +52,19 @@ namespace NWorld.MapServices.MapRenderComponents
         // hill country would look like a rounding error. The gap between the top of the hills
         // and the foot of the mountains is deliberate -- it is what makes a treeline you can
         // see.
-        private const float HillsFloor = 10f;
-        private const float HillsCeiling = 48f;
+        //
+        // The hills start well clear of nothing for the same reason. A band that fades in from
+        // zero spends its first few heights indistinguishable from the flat land it is meant to
+        // stand out of, and most hill country on a map is its first few heights -- so the floor
+        // is a step up onto the band rather than the bottom of a ramp into it, and the climb
+        // across the band is what is left over.
+        private const float HillsFloor = 32f;
+        private const float HillsCeiling = 60f;
         private const float MountainsFloor = 78f;
         private const float MountainsCeiling = 205f;
 
         /// <summary>
-        /// How much of the lift each channel gets.
+        /// How much of the lift each channel gets at the foot of the mountains.
         /// <para>
         /// Not neutral, and this is the difference between a mountain and a cloud. Screening
         /// ground with a grey walks it towards white: blue starts lowest in every ground colour
@@ -68,6 +74,19 @@ namespace NWorld.MapServices.MapRenderComponents
         /// </para>
         /// </summary>
         private static readonly (float Red, float Green, float Blue) Tint = (0.85f, 1f, 0.5f);
+
+        /// <summary>
+        /// How much of the lift each channel gets on the hills.
+        /// <para>
+        /// Warmer than the mountains, and this is what tells hill country from the flat at a
+        /// glance. Lifted by the same near-green as a mountain foot, a hill is only a paler
+        /// version of the field beside it -- and pale enough to read on its own is most of the
+        /// way to snow before the land is out of the lowlands. Leaning the lift towards red
+        /// instead dries the ground it lands on, upland turf and bracken rather than pasture,
+        /// so the hills separate by colour as well as by tone and need far less tone to do it.
+        /// </para>
+        /// </summary>
+        private static readonly (float Red, float Green, float Blue) HillsTint = (1f, 0.82f, 0.42f);
 
         /// <summary>
         /// What the tint becomes at the very top of the scale.
@@ -162,9 +181,13 @@ namespace NWorld.MapServices.MapRenderComponents
                     ? 0f
                     : (float)(elevation - MountainsFrom) / (MountainsTo - MountainsFrom);
 
-                var red = Tint.Red + ((Snow.Red - Tint.Red) * snow);
-                var green = Tint.Green + ((Snow.Green - Tint.Green) * snow);
-                var blue = Tint.Blue + ((Snow.Blue - Tint.Blue) * snow);
+                // The hills keep their own colour the whole way up; the mountains start from
+                // theirs and walk to snow.
+                var tint = elevation <= HillsTo ? HillsTint : Tint;
+
+                var red = tint.Red + ((Snow.Red - tint.Red) * snow);
+                var green = tint.Green + ((Snow.Green - tint.Green) * snow);
+                var blue = tint.Blue + ((Snow.Blue - tint.Blue) * snow);
 
                 paints[elevation] = new SKPaint
                 {
