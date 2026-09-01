@@ -72,8 +72,14 @@ public readonly record struct CoverSettings(double Coverage, double PatchSize, i
 /// </summary>
 public static class GroundCoverBuilder
 {
-    /// <summary>Octaves in the patch field, and the smallest feature it may carry.</summary>
+    /// <summary>
+    /// The smallest feature a patch field may carry, in tiles, and the most octaves it may use
+    /// -- see <see cref="SimplexNoise.OctavesFor"/>. Below that a patch stops being a patch and
+    /// becomes speckle.
+    /// </summary>
     private const double MinFeatureTiles = 4;
+
+    /// <inheritdoc cref="MinFeatureTiles"/>
     private const int MaxOctaves = 5;
 
     /// <summary>
@@ -155,25 +161,11 @@ public static class GroundCoverBuilder
             return spread;
 
         var score = Score(width, height, relief, settings, laying);
-
-        var ranked = new double[room];
-        var next = 0;
-
-        for (var i = 0; i < score.Length; i++)
-        {
-            if (eligible[i])
-                ranked[next++] = score[i];
-        }
-
-        Array.Sort(ranked);
-
-        // Above every score when nothing is wanted, so a dial at zero means none rather than
-        // one: the best tile would otherwise always tie its way in.
-        var cut = ranked[Math.Clamp(ranked.Length - wanted, 0, ranked.Length - 1)];
+        var taken = ScoreCut.Take(eligible, score, wanted);
 
         for (var i = 0; i < spread.Length; i++)
         {
-            if (eligible[i] && score[i] >= cut)
+            if (eligible[i] && taken.Takes(score[i]))
                 spread[i] = laying;
         }
 
@@ -190,9 +182,7 @@ public static class GroundCoverBuilder
         var patch = Math.Max(2, settings.PatchSize);
         var frequency = 1.0 / patch;
 
-        // Held so the finest octave stays broader than a few tiles, for the same reason the
-        // relief holds its own: below that a patch stops being a patch and becomes speckle.
-        var octaves = Math.Clamp(1 + (int)Math.Log2(patch / MinFeatureTiles), 1, MaxOctaves);
+        var octaves = SimplexNoise.OctavesFor(patch, MinFeatureTiles, MaxOctaves);
 
         // The two covers are dealt off the same seed but not the same field, or a swamp and a
         // desert would want exactly the same ground and only the first one pressed would ever

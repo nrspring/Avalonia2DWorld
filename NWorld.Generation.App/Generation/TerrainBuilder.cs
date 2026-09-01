@@ -67,18 +67,13 @@ public static class TerrainBuilder
     private const int MountainsTo = Elevations.MountainsTo;
 
     /// <summary>
-    /// The smallest feature the fields are allowed to carry, in tiles.
-    /// <para>
-    /// This is what separates terrain from speckle. Octaves double in frequency, so the finest
-    /// one in a five-octave field spanning a twenty-six tile range has a wavelength under two
-    /// tiles -- noise at the size of a tile, which sends neighbours to 1 and 13 and back, and
-    /// leaves a mountain range looking like static rather than like ground somebody could walk
-    /// up. Octaves are counted from the range size so the finest never gets below this.
-    /// </para>
+    /// The smallest feature the fields are allowed to carry, in tiles, and the most octaves
+    /// they may use to get there. See <see cref="SimplexNoise.OctavesFor"/> for why the first
+    /// of those is what separates terrain from speckle.
     /// </summary>
     private const double MinFeatureTiles = 5;
 
-    /// <summary>Detail past this is below a tile on any range worth having.</summary>
+    /// <inheritdoc cref="MinFeatureTiles"/>
     private const int MaxOctaves = 6;
 
     /// <summary>
@@ -241,11 +236,9 @@ public static class TerrainBuilder
         var noise = new SimplexNoise(unchecked((uint)settings.Seed * 2246822519u) + 0x85EBu);
         var frequency = 1.0 / rangeSize;
 
-        // Held so the finest octave stays broader than a handful of tiles -- see
-        // MinFeatureTiles. A short range therefore gets fewer octaves, which is right: there is
-        // no room for four scales of detail inside a massif eight tiles across.
-        var octaves = Math.Clamp(
-            1 + (int)Math.Log2(rangeSize / MinFeatureTiles), 1, MaxOctaves);
+        // A short range gets fewer octaves, which is right: there is no room for four scales
+        // of detail inside a massif eight tiles across.
+        var octaves = SimplexNoise.OctavesFor(rangeSize, MinFeatureTiles, MaxOctaves);
 
         // How far from the sea each land tile is, which is what keeps the ranges inland.
         var inland = LandTopology.DistanceFromSea(land, width, height);
@@ -309,72 +302,14 @@ public static class TerrainBuilder
     private static void AssignBand(
         int[] relief, bool[] eligible, double[] score, int wanted, int low, int high)
     {
-        if (wanted <= 0)
-            return;
-
-        var room = 0;
-
-        for (var i = 0; i < eligible.Length; i++)
-        {
-            if (eligible[i])
-                room++;
-        }
-
-        if (room == 0)
-            return;
-
-        wanted = Math.Min(wanted, room);
-
-        var ranked = new double[room];
-        var next = 0;
-
-        for (var i = 0; i < score.Length; i++)
-        {
-            if (eligible[i])
-                ranked[next++] = score[i];
-        }
-
-        Array.Sort(ranked);
-
-        var cut = Cut(ranked, wanted);
-
-        // Where the band starts in the sorted scores, so a tile's place in it is the distance
-        // from here to where its own score sits.
-        var floor = ranked.Length - wanted;
+        var band = ScoreCut.Take(eligible, score, wanted);
 
         for (var i = 0; i < relief.Length; i++)
         {
-            if (eligible[i] && score[i] >= cut)
-                relief[i] = Step(Rank(ranked, score[i]) - floor, wanted, low, high);
+            if (eligible[i] && band.Takes(score[i]))
+                relief[i] = Step(band.PlaceOf(score[i]), band.Taken, low, high);
         }
     }
-
-    /// <summary>
-    /// Where a score sits in the sorted scores: the number of tiles standing lower than it.
-    /// <para>
-    /// Found rather than carried alongside, which costs a binary search per tile and saves
-    /// building and sorting a second index over the whole map. Tiles that score exactly the
-    /// same rank together, which is the only honest answer for ground of the same height.
-    /// </para>
-    /// </summary>
-    private static int Rank(double[] ranked, double value)
-    {
-        var found = Array.BinarySearch(ranked, value);
-
-        return found >= 0 ? found : ~found;
-    }
-
-    /// <summary>
-    /// The score a tile has to beat to be in the top <paramref name="take"/> of the land.
-    /// <para>
-    /// Above every score when nothing is being taken, which is what makes a dial at zero mean
-    /// none rather than one -- the highest tile would otherwise always tie its way in.
-    /// </para>
-    /// </summary>
-    private static double Cut(double[] ranked, int take) =>
-        take <= 0
-            ? double.MaxValue
-            : ranked[Math.Clamp(ranked.Length - take, 0, ranked.Length - 1)];
 
     /// <summary>
     /// A tile's place in its band, as an elevation in that band: the lowest tile of the band

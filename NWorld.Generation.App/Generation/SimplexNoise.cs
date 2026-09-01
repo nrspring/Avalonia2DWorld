@@ -64,6 +64,27 @@ internal sealed class SimplexNoise
     }
 
     /// <summary>
+    /// How many octaves a field can carry before its finest one drops below
+    /// <paramref name="minFeatureTiles"/>.
+    /// <para>
+    /// This is what separates terrain from speckle, and it is the same arithmetic wherever a
+    /// field is sampled against a feature size. Octaves double in frequency, so the finest of
+    /// five spanning a twenty-six tile range has a wavelength under two tiles -- noise at the
+    /// size of a tile, which sends neighbouring elevations to 1 and 13 and back, and leaves a
+    /// mountain range looking like static rather than like ground somebody could walk up.
+    /// </para>
+    /// <para>
+    /// Counted from the feature size rather than fixed, so a small feature gets fewer octaves.
+    /// There is no room for four scales of detail inside a massif eight tiles across.
+    /// </para>
+    /// </summary>
+    /// <param name="featureTiles">How many tiles across the coarsest octave runs.</param>
+    /// <param name="minFeatureTiles">The finest wavelength to allow, in tiles.</param>
+    /// <param name="maxOctaves">A ceiling, for fields that could otherwise ask for many.</param>
+    public static int OctavesFor(double featureTiles, double minFeatureTiles, int maxOctaves) =>
+        Math.Clamp(1 + (int)Math.Log2(featureTiles / minFeatureTiles), 1, maxOctaves);
+
+    /// <summary>
     /// Octaves of noise, halving in weight and doubling in frequency. Roughly -1 to 1:
     /// the octaves rarely peak together, so the sum stays well inside its bounds, which
     /// is what makes a coast wander rather than lurch.

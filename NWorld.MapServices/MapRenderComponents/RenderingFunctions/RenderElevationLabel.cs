@@ -53,13 +53,6 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         private const long MaxCacheBytes = 8L * 1024 * 1024;
 
         /// <summary>
-        /// Granularity of the DrawAtlas buffers, as on the grass. Large enough that panning
-        /// rarely crosses a boundary, small enough that the slack drawn as degenerate quads is
-        /// nothing beside a screenful of tiles.
-        /// </summary>
-        private const int CapacityBlock = 1024;
-
-        /// <summary>
         /// Monospaced, so a two-digit label is twice a one-digit one and the atlas needs a
         /// single advance rather than one per glyph. Null on a machine without it, which Skia
         /// reads as "use the default" -- the layout still holds, since the advance is measured
@@ -79,11 +72,6 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
         };
 
         private static readonly ZoomLevelCache<GlyphAtlas> Atlases = new(MaxCacheBytes, Build);
-
-        // Per-thread, so a background prewarm and a repaint never share them, and held between
-        // frames rather than rented: the visible tile count barely changes.
-        [ThreadStatic] private static SKRect[]? Sprites;
-        [ThreadStatic] private static SKRotationScaleMatrix[]? Transforms;
 
         /// <summary>
         /// Draws every label in the batch. Nothing here moves with
@@ -110,19 +98,7 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
                 return Task.CompletedTask;
 
             var atlas = Atlases.Get(tileSize);
-
-            // Rounded up to a block, so panning -- which changes the count by a column at a
-            // time -- rarely resizes, while a zoom still resizes promptly because the length
-            // must match the rounded size exactly rather than merely fit inside it.
-            var capacity = (quads + CapacityBlock - 1) / CapacityBlock * CapacityBlock;
-
-            var sprites = Sprites;
-            var transforms = Transforms;
-
-            if (sprites is null || sprites.Length != capacity)
-                Sprites = sprites = new SKRect[capacity];
-            if (transforms is null || transforms.Length != capacity)
-                Transforms = transforms = new SKRotationScaleMatrix[capacity];
+            var (sprites, transforms) = SpriteBatch.Reserve(quads);
 
             var next = 0;
 
@@ -157,15 +133,7 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
                 }
             }
 
-            // The slack at the end is drawn too, so it is given a zero scale: the quad
-            // collapses to a point and rasterises nothing.
-            for (var i = next; i < capacity; i++)
-            {
-                sprites[i] = SKRect.Create(0, 0, 1, 1);
-                transforms[i] = new SKRotationScaleMatrix(0f, 0f, 0f, 0f);
-            }
-
-            canvas.DrawAtlas(atlas.Image, sprites, transforms, BlitPaint);
+            SpriteBatch.Draw(canvas, atlas.Image, sprites, transforms, next, BlitPaint);
 
             return Task.CompletedTask;
         }

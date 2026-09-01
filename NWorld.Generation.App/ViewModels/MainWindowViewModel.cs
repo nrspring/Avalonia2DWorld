@@ -654,10 +654,17 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// <summary>Fills the continent seed box with a new one, for the button beside it.</summary>
     [RelayCommand]
     private void NewContinentSeed() =>
-        ContinentSeed = Random.Shared.Next(1, 1_000_000).ToString(CultureInfo.InvariantCulture);
+        ContinentSeed = NewSeed();
 
     /// <summary>The seed as typed. Any whole number, negatives included.</summary>
     private static bool TryReadSeed(string? text, out int seed) => int.TryParse(text, out seed);
+
+    /// <summary>
+    /// A fresh seed for one of the New buttons. Six digits and never zero: long enough that
+    /// two presses are unlikely to collide, short enough to read out to somebody.
+    /// </summary>
+    private static string NewSeed() =>
+        Random.Shared.Next(1, 1_000_000).ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
     /// The line under the island controls: what the next scatter will do, or what is
@@ -722,7 +729,7 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// <summary>Fills the island seed box with a new one.</summary>
     [RelayCommand]
     private void NewIslandSeed() =>
-        IslandSeed = Random.Shared.Next(1, 1_000_000).ToString(CultureInfo.InvariantCulture);
+        IslandSeed = NewSeed();
 
     /// <summary>
     /// The line under the hill controls: what the next raise will do, or what is stopping it.
@@ -780,35 +787,35 @@ public partial class MainWindowViewModel : MapViewModelBase
     }
 
     /// <summary>How many tiles of land there are to work with.</summary>
-    private long Acres()
-    {
-        if (_land is not { } land)
-            return 0;
-
-        var acres = 0L;
-        foreach (var isLand in land)
-        {
-            if (isLand)
-                acres++;
-        }
-
-        return acres;
-    }
+    private long Acres() => CountTiles(static elevation => elevation > Elevations.Sea);
 
     /// <summary>How much of the map is already standing at mountain height.</summary>
-    private long MountainTiles()
+    private long MountainTiles() =>
+        CountTiles(static elevation => elevation >= Elevations.MountainsFrom);
+
+    /// <summary>
+    /// How many tiles stand at a height the summaries care about.
+    /// <para>
+    /// Off the tiles rather than off the land mask, so every one of these counts the map that
+    /// is actually on screen. The mask says only what is land; the summaries also have to ask
+    /// how high it is, and asking two different sources is how two lines under two dials end
+    /// up disagreeing about the same map.
+    /// </para>
+    /// </summary>
+    private long CountTiles(Func<int, bool> wanted)
     {
         if (Tiles is not { } tiles)
             return 0;
 
-        var standing = 0L;
+        var counted = 0L;
+
         for (var i = 0; i < tiles.Count; i++)
         {
-            if (tiles[i].Elevation >= Elevations.MountainsFrom)
-                standing++;
+            if (wanted(tiles[i].Elevation))
+                counted++;
         }
 
-        return standing;
+        return counted;
     }
 
     /// <summary>
@@ -900,7 +907,7 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// <summary>Fills the terrain seed box with a new one.</summary>
     [RelayCommand]
     private void NewTerrainSeed() =>
-        TerrainSeed = Random.Shared.Next(1, 1_000_000).ToString(CultureInfo.InvariantCulture);
+        TerrainSeed = NewSeed();
 
     /// <summary>
     /// The line under the swamp controls: what the next spread will do, or what is stopping it.
@@ -941,20 +948,7 @@ public partial class MainWindowViewModel : MapViewModelBase
     }
 
     /// <summary>How much of the map is ground a swamp or a desert could sit on.</summary>
-    private long LowlandTiles()
-    {
-        if (Tiles is not { } tiles)
-            return 0;
-
-        var lowland = 0L;
-        for (var i = 0; i < tiles.Count; i++)
-        {
-            if (Elevations.IsLowland(tiles[i].Elevation))
-                lowland++;
-        }
-
-        return lowland;
-    }
+    private long LowlandTiles() => CountTiles(Elevations.IsLowland);
 
     /// <summary>
     /// Spreads swamp over the low wet ground, leaving any desert where it is.
@@ -999,7 +993,7 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// <summary>Fills the cover seed box with a new one.</summary>
     [RelayCommand]
     private void NewCoverSeed() =>
-        CoverSeed = Random.Shared.Next(1, 1_000_000).ToString(CultureInfo.InvariantCulture);
+        CoverSeed = NewSeed();
 
     /// <summary>
     /// Writes the map and the current settings to <paramref name="stream"/>.
