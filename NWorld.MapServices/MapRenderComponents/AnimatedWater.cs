@@ -284,6 +284,12 @@ namespace NWorld.MapServices.MapRenderComponents
 
             TileRuns.Fill(canvas, tiles, tileSize, _depthField.PaintFor(tileSize));
 
+            // Sea level is the datum, so this draws nothing on any water there is now. It is
+            // here so that water which is not at sea level -- a tarn in a mountain range, when
+            // something makes one -- is lit like the ground it sits in rather than like the
+            // ocean.
+            ElevationShade.Apply(context);
+
             return Task.CompletedTask;
         }
 

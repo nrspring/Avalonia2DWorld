@@ -197,6 +197,10 @@ namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
             BlitTiles(canvas, atlas, tiles, tileSize);
             PaintMeadowTone(canvas, tiles, tileSize);
 
+            // Last, over the finished ground -- see ElevationShade. Grass draws in a way
+            // nothing else here does, and this is the one part of it that is not its own.
+            ElevationShade.Apply(context);
+
             return Task.CompletedTask;
         }
 

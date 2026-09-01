@@ -71,6 +71,10 @@ namespace NWorld.MapServices.MapRenderComponents
             TileRuns.Fill(canvas, tiles, tileSize, _surfaces.Get(tileSize).Paint);
             TileRuns.Fill(canvas, tiles, tileSize, _tone.PaintFor(tileSize));
 
+            // Last, over the finished ground -- see ElevationShade. Every ground built on this
+            // gets height for nothing, which is the point of them sharing it.
+            ElevationShade.Apply(context);
+
             return Task.CompletedTask;
         }
 

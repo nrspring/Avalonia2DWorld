@@ -1006,11 +1006,26 @@ public partial class MainWindowViewModel : MapViewModelBase
     {
         var tile = new MapTile { X = coordinate.X, Y = coordinate.Y, Elevation = 1 };
 
-        tile.SetBaseGroundType(MapRenderComponentConstants.Grass);
+        Ground(tile, MapRenderComponentConstants.Grass);
         Label(tile);
 
         return tile;
     }
+
+    /// <summary>
+    /// Puts a ground on a tile, with the tile's elevation alongside it -- which is what draws
+    /// hills and mountains lighter than the flat land around them.
+    /// <para>
+    /// Passed down as a component parameter rather than read off the tile, for the reason
+    /// every other number here is: a render function is handed placements and never the map.
+    /// Anything that changes a tile's elevation has to set its ground again afterwards, or
+    /// the tile will be drawn at the height it used to be.
+    /// </para>
+    /// </summary>
+    private static void Ground(MapTile tile, Guid groundType) =>
+        tile.SetBaseGroundType(
+            groundType,
+            [tile.Elevation.ToString(CultureInfo.InvariantCulture)]);
 
     /// <summary>
     /// One tile of open ocean: deep water, elevation zero. Elevation is set explicitly
@@ -1021,7 +1036,7 @@ public partial class MainWindowViewModel : MapViewModelBase
     {
         var tile = new MapTile { X = coordinate.X, Y = coordinate.Y, Elevation = 0 };
 
-        tile.SetBaseGroundType(MapRenderComponentConstants.DeepWater);
+        Ground(tile, MapRenderComponentConstants.DeepWater);
         Label(tile);
 
         return tile;
