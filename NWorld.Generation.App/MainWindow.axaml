@@ -471,38 +471,6 @@
 
                     <StackPanel Spacing="10">
 
-                        <!-- The shape of the field both bands are cut out of, so it sits
-                             above them both rather than inside either. -->
-                        <TextBlock Classes="field" Text="SHAPE" />
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RuggednessHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Rugged" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="100"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding Ruggedness}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding Ruggedness, StringFormat=\{0:0\}%}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RangeSizeHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Range" />
-                            <Slider Grid.Column="1" Minimum="4" Maximum="80"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding RangeSize}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding RangeSize, StringFormat=\{0:0\}t}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding TerrainSeedHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
-                            <TextBox Grid.Column="1" Text="{Binding TerrainSeed}" Watermark="1" />
-                            <Button Grid.Column="3" Classes="quiet" Content="New"
-                                    Command="{Binding NewTerrainSeedCommand}"
-                                    ToolTip.Tip="{Binding TerrainSeedHelp}" />
-                        </Grid>
-
-                        <Border Classes="rule" />
-
                         <TextBlock Classes="field" Text="HILLS" />
 
                         <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding HillCoverageHelp}">
@@ -512,6 +480,15 @@
                                     Value="{Binding HillCoverage}" />
                             <TextBlock Grid.Column="2" Classes="reading"
                                        Text="{Binding HillCoverage, StringFormat=\{0:0\}%}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding HillSpreadHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Spread" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="40"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding HillSpread}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding HillSpread, StringFormat=\{0:0\}t}" />
                         </Grid>
 
                         <TextBlock Classes="note"
@@ -538,6 +515,24 @@
                                        Text="{Binding MountainCoverage, StringFormat=\{0:0\}%}" />
                         </Grid>
 
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RuggednessHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Rugged" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding Ruggedness}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding Ruggedness, StringFormat=\{0:0\}%}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RangeSizeHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Range" />
+                            <Slider Grid.Column="1" Minimum="4" Maximum="80"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding RangeSize}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding RangeSize, StringFormat=\{0:0\}t}" />
+                        </Grid>
+
                         <TextBlock Classes="note"
                                    Classes.warn="{Binding HasMountainProblem}"
                                    Text="{Binding MountainSummary}"
@@ -548,6 +543,18 @@
                                     Content="Raise Mountains"
                                     Command="{Binding BuildMountainsCommand}" />
                         </Border>
+
+                        <Border Classes="rule" />
+
+                        <!-- The one thing the two do share, and only because a seed is what
+                             says which world this is. -->
+                        <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding TerrainSeedHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
+                            <TextBox Grid.Column="1" Text="{Binding TerrainSeed}" Watermark="1" />
+                            <Button Grid.Column="3" Classes="quiet" Content="New"
+                                    Command="{Binding NewTerrainSeedCommand}"
+                                    ToolTip.Tip="{Binding TerrainSeedHelp}" />
+                        </Grid>
 
                     </StackPanel>
                 </Expander>

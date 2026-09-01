@@ -200,13 +200,21 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// the peaks strung along their crests.
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HillSummary), nameof(MountainSummary))]
-    private double _ruggedness = 55;
+    [NotifyPropertyChangedFor(nameof(MountainSummary))]
+    private double _ruggedness = 75;
 
     /// <summary>Roughly how far a range runs before it breaks, in tiles.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HillSummary), nameof(MountainSummary))]
-    private double _rangeSize = 26;
+    [NotifyPropertyChangedFor(nameof(MountainSummary))]
+    private double _rangeSize = 30;
+
+    /// <summary>
+    /// How far the hills reach out from the high ground, in tiles. The hills' own dial, and
+    /// the only one they have: it does nothing whatever to a mountain.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HillSummary))]
+    private double _hillSpread = 10;
 
     /// <inheritdoc cref="ContinentSeed"/>
     [ObservableProperty]
@@ -307,9 +315,10 @@ public partial class MainWindowViewModel : MapViewModelBase
          "tile of coast moves, and no land is added or taken away.@@" +
          "The two are raised separately, by their own buttons, and neither disturbs the " +
          "other: press either as often as you like without the second press piling onto the " +
-         "first. Shape and Seed are shared, which is what keeps them one landscape -- the " +
-         "hills come out as the skirts of the ranges rather than as something scattered on " +
-         "its own.@@" +
+         "first. They share no dial but the seed -- Rugged and Range shape the ranges, " +
+         "Spread belongs to the hills -- and the seed is shared because it is what says " +
+         "which world this is. Both are cut from the one relief, which is what keeps them " +
+         "one landscape.@@" +
          "Run them after the land is the shape you want. Building continents or scattering " +
          "islands starts the world over from sea level, so anything raised here goes with " +
          "it and has to be raised again.@@" +
@@ -352,21 +361,30 @@ public partial class MainWindowViewModel : MapViewModelBase
 
     /// <summary>The ruggedness tooltip.</summary>
     public string RuggednessHelp =>
-        ("Whether the high ground is rounded or sharp. Shared: it shapes the field both the " +
-         "hills and the mountains are cut out of.@@" +
-         "Low is broad swells of upland with the height spread over them. High folds the " +
-         "field about its own zero, which puts the peaks on creases -- and a crease in a " +
-         "smooth field is a line, which is what makes a range read as a range rather than " +
-         "as a patch.@@" +
+        ("Whether the high ground is rounded or sharp.@@" +
+         "Low is broad swells of upland with the height spread over them. High strings the " +
+         "peaks along creases, and a crease in a smooth field is a line -- which is what " +
+         "makes a range read as a range rather than as a patch. Turn it up for a world of " +
+         "chains and passes; turn it down for rolling country.@@" +
          "It changes where the mountains are, never how much mountain there is.").Replace("@@", "\n\n");
 
     /// <summary>The range-size tooltip.</summary>
     public string RangeSizeHelp =>
-        ("Roughly how many tiles a range runs for before it breaks up. Shared, like Rugged.@@" +
+        ("Roughly how many tiles a range runs for before it breaks up.@@" +
          "Small values give scattered massifs; large ones give long chains that cross the " +
          "whole of a continent. It also sets how far inland the high ground is pushed, since " +
          "a range that runs down into the sea reads as a drowned world rather than a " +
          "continent.").Replace("@@", "\n\n");
+
+    /// <summary>The hill-spread tooltip.</summary>
+    public string HillSpreadHelp =>
+        ("How far the hills reach out from the high ground, in tiles.@@" +
+         "The hills are cut from the same relief as the mountains, blurred by this much. " +
+         "Blurring moves high ground nowhere and only widens it, so however far you push " +
+         "this the hills stay an apron around the ranges rather than wandering off on their " +
+         "own -- they just make a broader one.@@" +
+         "At zero they are the ring immediately below the ranges, which is as tight as the " +
+         "two ever sit. It does nothing at all to a mountain.").Replace("@@", "\n\n");
 
     /// <inheritdoc cref="ContinentSeedHelp"/>
     public string TerrainSeedHelp =>
@@ -747,7 +765,11 @@ public partial class MainWindowViewModel : MapViewModelBase
             var standing = MountainTiles();
             var hills = Math.Min((long)(acres * HillCoverage / 100), acres - standing);
 
-            return $"{hills:N0} tiles of hills, around whatever is already up.";
+            var apron = HillSpread < 1
+                ? "in a ring below the ranges"
+                : $"spread {HillSpread:0} tiles out from the ranges";
+
+            return $"{hills:N0} tiles of hills, {apron}.";
         }
     }
 
@@ -852,7 +874,8 @@ public partial class MainWindowViewModel : MapViewModelBase
         Remember();
 
         var relief = pass(map.Width, map.Height, land, CurrentRelief(map), new TerrainSettings(
-            MountainCoverage / 100, HillCoverage / 100, Ruggedness / 100, RangeSize, seed));
+            MountainCoverage / 100, HillCoverage / 100, Ruggedness / 100, RangeSize,
+            HillSpread, seed));
 
         // Carried through rather than cleared: raising a range is not a reason to drain the
         // marshes on the other side of the continent. What the range itself rises over does
@@ -1025,6 +1048,7 @@ public partial class MainWindowViewModel : MapViewModelBase
                 HillCoverage = HillCoverage,
                 Ruggedness = Ruggedness,
                 RangeSize = RangeSize,
+                HillSpread = HillSpread,
                 TerrainSeed = TerrainSeed,
                 SwampCoverage = SwampCoverage,
                 DesertCoverage = DesertCoverage,
@@ -1106,6 +1130,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         HillCoverage = settings.HillCoverage ?? HillCoverage;
         Ruggedness = settings.Ruggedness ?? Ruggedness;
         RangeSize = settings.RangeSize ?? RangeSize;
+        HillSpread = settings.HillSpread ?? HillSpread;
         TerrainSeed = settings.TerrainSeed ?? TerrainSeed;
 
         SwampCoverage = settings.SwampCoverage ?? SwampCoverage;

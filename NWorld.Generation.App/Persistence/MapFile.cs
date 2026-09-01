@@ -35,6 +35,7 @@ public sealed record MapSettings
     public double? HillCoverage { get; init; }
     public double? Ruggedness { get; init; }
     public double? RangeSize { get; init; }
+    public double? HillSpread { get; init; }
     public string? TerrainSeed { get; init; }
 
     public double? SwampCoverage { get; init; }

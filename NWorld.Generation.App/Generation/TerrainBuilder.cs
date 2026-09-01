@@ -18,13 +18,23 @@ namespace NWorld.Generation.App.Generation;
 /// silently move the other.
 /// </param>
 /// <param name="Ruggedness">
-/// From 0 (broad rounded uplands) to 1 (sharp, broken ranges with the peaks strung out along
-/// crests).
+/// From 0 (broad rounded uplands) to 1 (sharp ranges with the peaks strung along their crests).
+/// A mountain dial: it shapes the relief the ranges are cut from.
 /// </param>
 /// <param name="RangeSize">Roughly how many tiles a range runs for, before it breaks.</param>
+/// <param name="HillSpread">
+/// How far, in tiles, the hills reach out from the high ground. A hill dial, and the only one
+/// that is: at zero the hills are the ring immediately below the ranges, and every tile further
+/// widens the apron they make around them.
+/// </param>
 /// <param name="Seed">Makes a run repeatable. The same seed and settings give the same relief.</param>
 public readonly record struct TerrainSettings(
-    double MountainCoverage, double HillCoverage, double Ruggedness, double RangeSize, int Seed);
+    double MountainCoverage,
+    double HillCoverage,
+    double Ruggedness,
+    double RangeSize,
+    double HillSpread,
+    int Seed);
 
 /// <summary>
 /// Raises hills and mountains out of land that is already there, as an elevation per tile in
@@ -33,10 +43,20 @@ public readonly record struct TerrainSettings(
 /// Two passes rather than one, because they are two buttons. Each reads the heights already
 /// there and puts back only its own band, so raising hills does not disturb a range and
 /// raising a range does not disturb the hills -- and either can be pressed twice without the
-/// second press piling onto the first. What keeps them looking like one landscape is that both
-/// take their heights from the same field, off the same seed: the two bands are neighbouring
-/// slices of one ranking, so hills come out as the skirts of the mountains rather than as
-/// something scattered independently.
+/// second press piling onto the first.
+/// </para>
+/// <para>
+/// What keeps them looking like one landscape is that both are cut from the same field, off
+/// the same seed. The mountains take the top of it. The hills take the top of that same field
+/// with its high ground allowed to <b>reach outwards</b>, by however many tiles the spread dial
+/// asks for -- see <see cref="Widen"/>. Nothing moves a peak or invents one, so the hills come
+/// out as an apron around the ranges however far they are pushed. That is the whole of the
+/// relationship: one field, one seed, and a reach.
+/// </para>
+/// <para>
+/// It also means the two have no dial in common. Ruggedness and range length shape the relief
+/// and so belong to the mountains; the spread belongs to the hills and does nothing to a range.
+/// Only the seed is shared, because a seed is what says which world this is.
 /// </para>
 /// <para>
 /// It shapes only the height and never the coast. The land mask it is given comes back
@@ -108,7 +128,12 @@ public static class TerrainBuilder
         if (landCount == 0)
             return raised;
 
-        var score = Score(width, height, land, settings);
+        // The same relief the mountains are cut from, with the high ground allowed to reach
+        // outwards by the spread dial. It moves no peak and invents no new one -- it only lets
+        // what is already high carry downhill -- so the hills stay an apron around the ranges
+        // however far the dial pushes them out.
+        var score = Widen(
+            Score(width, height, land, settings), land, width, height, settings.HillSpread);
 
         // Only ground the mountains have not already taken. Hills fill in around a range
         // rather than competing with it, which is why they come out as its skirts.
@@ -219,6 +244,79 @@ public static class TerrainBuilder
     }
 
     /// <summary>
+    /// Lets high ground reach outwards, falling away with distance: every tile takes the best
+    /// of its own score and its neighbours' one step downhill, so a peak casts an influence
+    /// that fades over <paramref name="spreadTiles"/> tiles and then is gone.
+    /// <para>
+    /// This is what the hills' spread dial does, and it is deliberately not a blur. Averaging
+    /// the field was the obvious thing and it does the opposite of what is wanted: a mean pulls
+    /// the ranking towards whatever is broadest, so the hills bunch <em>harder</em> onto the
+    /// big ranges and the outliers vanish. Taking a falling maximum instead extends the high
+    /// ground outward without lowering it, which is the apron.
+    /// </para>
+    /// <para>
+    /// Graded rather than flat, which matters because the band is assigned by rank: were the
+    /// apron a plateau of equal scores the hills inside it would have no order, and the height
+    /// across a hillside would come out as noise. Falling with distance means the tiles nearest
+    /// the range rank highest and a hillside runs downhill the way it should.
+    /// </para>
+    /// <para>
+    /// Two sweeps, one from each corner, propagating only between neighbours that are both
+    /// land. That makes the reach a four-way distance -- the same steps everything else on this
+    /// map moves in -- and it stops an apron jumping a strait to the next island.
+    /// </para>
+    /// </summary>
+    /// <param name="spreadTiles">How far the influence carries. Under a tile, nothing happens.</param>
+    private static double[] Widen(
+        double[] score, bool[] land, int width, int height, double spreadTiles)
+    {
+        if (spreadTiles < 1)
+            return score;
+
+        // The scores run roughly 0 to 1, so losing this much a tile puts the reach at about
+        // the number of tiles asked for.
+        var decay = 1.0 / spreadTiles;
+
+        var widened = (double[])score.Clone();
+
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var index = (y * width) + x;
+
+                if (!land[index])
+                    continue;
+
+                if (x > 0 && land[index - 1])
+                    widened[index] = Math.Max(widened[index], widened[index - 1] - decay);
+
+                if (y > 0 && land[index - width])
+                    widened[index] = Math.Max(widened[index], widened[index - width] - decay);
+            }
+        }
+
+        for (var y = height - 1; y >= 0; y--)
+        {
+            for (var x = width - 1; x >= 0; x--)
+            {
+                var index = (y * width) + x;
+
+                if (!land[index])
+                    continue;
+
+                if (x < width - 1 && land[index + 1])
+                    widened[index] = Math.Max(widened[index], widened[index + 1] - decay);
+
+                if (y < height - 1 && land[index + width])
+                    widened[index] = Math.Max(widened[index], widened[index + width] - decay);
+            }
+        }
+
+        return widened;
+    }
+
+    /// <summary>
     /// How high each land tile wants to be, before any of it is cut into bands. Sea scores
     /// below every land tile, so a cut never lands on it.
     /// <para>
@@ -261,15 +359,10 @@ public static class TerrainBuilder
 
                 var swell = (noise.Fbm(x * frequency, y * frequency, octaves) + 1) * 0.5;
 
-                // Folded about zero, so what was a smooth crossing becomes a crease. Sampled
-                // off the swell's own coordinates, or the two fields would peak together and
-                // the dial between them would do nothing.
-                var crest = 1 - Math.Abs(noise.Fbm(
-                    (x * frequency) + 31.7, (y * frequency) - 12.4, octaves));
-
-                // Squared, which sharpens the crease into a ridge rather than leaving it a
-                // rounded fold. Only at the rugged end, where that is what is being asked for.
-                var ridged = crest * crest;
+                // The ranges. Sampled off the swell's own coordinates, or the two fields would
+                // peak together and the dial between them would do nothing.
+                var ridged = noise.RidgedFbm(
+                    (x * frequency) + 31.7, (y * frequency) - 12.4, octaves);
 
                 var height01 = swell + ((ridged - swell) * ruggedness);
 

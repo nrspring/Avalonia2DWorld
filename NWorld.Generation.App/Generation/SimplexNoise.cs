@@ -105,6 +105,54 @@ internal sealed class SimplexNoise
     }
 
     /// <summary>
+    /// Ridged noise, summed over octaves: 0 mostly, rising to 1 along sharp connected crests.
+    /// <para>
+    /// This is what makes a mountain range a range rather than a patch of high ground. Folding
+    /// each octave about zero -- <c>1 - |n|</c> -- turns its zero crossings into creases, and
+    /// the zero crossing of a smooth field is a <em>line</em>, so the high ground comes out
+    /// strung along curves instead of pooled in blobs. Squaring sharpens the crease into a
+    /// ridge.
+    /// </para>
+    /// <para>
+    /// The weighting is what separates this from simply folding <see cref="Fbm"/>. Each octave
+    /// is multiplied by how high the one above it stood, so detail only accumulates where a
+    /// ridge already runs: spurs and side-valleys form along the main crest, and the flats
+    /// between ranges stay flat instead of filling up with small crests of their own. Fold an
+    /// ordinary sum of octaves instead and every octave creases independently, which gives a
+    /// field of creases at every scale -- the blobby, evenly-rough terrain this replaced.
+    /// </para>
+    /// <para>
+    /// Roughly 0 to 1 rather than -1 to 1, since a fold has no negative side.
+    /// </para>
+    /// </summary>
+    public double RidgedFbm(double x, double y, int octaves)
+    {
+        double sum = 0, amplitude = 1, frequency = 1, total = 0;
+
+        // How much the next octave counts for. Starts open, and from then on is whatever the
+        // last octave left standing.
+        var weight = 1.0;
+
+        for (var i = 0; i < octaves; i++)
+        {
+            var crest = 1 - Math.Abs(Noise(x * frequency, y * frequency));
+            crest *= crest;
+            crest *= weight;
+
+            // Doubled before clamping, so a middling crest still passes most of itself on and
+            // only the flats shut the next octave out.
+            weight = Math.Clamp(crest * 2, 0, 1);
+
+            sum += crest * amplitude;
+            total += amplitude;
+            amplitude *= 0.5;
+            frequency *= 2;
+        }
+
+        return sum / total;
+    }
+
+    /// <summary>
     /// One octave. The point sits inside a triangle of the skewed grid; each of the
     /// triangle's three corners contributes its own gradient, faded out by distance, and
     /// the three are summed.
