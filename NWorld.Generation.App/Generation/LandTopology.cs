@@ -194,6 +194,241 @@ public static class LandTopology
         return drowned;
     }
 
+    /// <summary>
+    /// Cuts passes through mountain ranges until every part of a landmass can be walked to
+    /// from every other part without climbing one, and reports how many tiles were lowered.
+    /// <para>
+    /// This is the same rule as the other two, applied one level up. Land that cannot be
+    /// walked to is not land -- and a valley ringed by mountains is exactly that, however
+    /// green it looks. A range is meant to be something you go around or through, not a wall
+    /// that quietly cuts a continent in half.
+    /// </para>
+    /// <para>
+    /// The passes are found rather than placed. Every tile is given the cost of lowering it to
+    /// a walkable height -- nothing for ground that already is, and the height above it for
+    /// anything else -- and the cheapest crossings between the walled-in regions are the ones
+    /// cut. The cheapest crossing of a range is its lowest saddle, so the passes come out where
+    /// a pass belongs, and a range with a natural gap in it is joined through the gap at no
+    /// cost at all.
+    /// </para>
+    /// <para>
+    /// One breadth-first sweep for all of them, not one per region: every region floods
+    /// outwards at once, whichever reaches a tile first owns it, and the places where two
+    /// floods meet are the candidate crossings. Taking those cheapest-first and skipping any
+    /// whose two sides are already joined is a minimum spanning forest over the regions, so
+    /// the map is opened up for the least mountain cut.
+    /// </para>
+    /// <para>
+    /// Separate landmasses are left alone. The flood only ever walks on land, so two regions
+    /// on either side of open water never meet and no pass is cut across the sea. An island
+    /// with nothing but mountain on it is left as it is -- there is no walkable ground on it
+    /// to join.
+    /// </para>
+    /// </summary>
+    /// <param name="relief">Elevation per tile, edited in place. Sea is 0.</param>
+    /// <param name="mountainFrom">The lowest elevation that counts as impassable.</param>
+    /// <param name="passHeight">What a cut tile is lowered to. Below <paramref name="mountainFrom"/>.</param>
+    public static int OpenMountainPasses(
+        int[] relief, int width, int height, int mountainFrom, int passHeight)
+    {
+        ArgumentNullException.ThrowIfNull(relief);
+
+        if (passHeight >= mountainFrom)
+            throw new ArgumentOutOfRangeException(
+                nameof(passHeight), "A pass has to come out below the mountains.");
+
+        var walkable = new bool[relief.Length];
+        for (var i = 0; i < relief.Length; i++)
+            walkable[i] = relief[i] > 0 && relief[i] < mountainFrom;
+
+        var (region, sizes) = Label(walkable, width, height);
+
+        // One region, or none at all, is nothing to join.
+        if (sizes.Count <= 2)
+            return 0;
+
+        // What it costs to enter a tile: what has to come off it. Sea is never entered.
+        int Cost(int index) =>
+            relief[index] <= passHeight ? 0 : relief[index] - passHeight;
+
+        var owner = new int[relief.Length];
+        var from = new int[relief.Length];
+        var spent = new long[relief.Length];
+
+        Array.Fill(from, -1);
+        Array.Fill(spent, long.MaxValue);
+
+        var frontier = new PriorityQueue<int, long>();
+
+        for (var index = 0; index < relief.Length; index++)
+        {
+            if (region[index] == 0)
+                continue;
+
+            owner[index] = region[index];
+            spent[index] = 0;
+            frontier.Enqueue(index, 0);
+        }
+
+        // Where two floods met, and what the crossing between them cost.
+        var crossings = new List<(long Cost, int Near, int Far)>();
+
+        while (frontier.TryDequeue(out var index, out var cost))
+        {
+            // A stale copy, left behind when a cheaper route to the same tile was found.
+            if (cost > spent[index])
+                continue;
+
+            var x = index % width;
+            var y = index / width;
+
+            foreach (var (dx, dy) in Steps)
+            {
+                var nx = x + dx;
+                var ny = y + dy;
+
+                if (nx < 0 || ny < 0 || nx >= width || ny >= height)
+                    continue;
+
+                var neighbour = (ny * width) + nx;
+
+                // Never off the land, which is what keeps a pass from being cut through
+                // the sea between two islands.
+                if (relief[neighbour] <= 0)
+                    continue;
+
+                if (owner[neighbour] != 0 && owner[neighbour] != owner[index])
+                {
+                    // Two different floods touching. Kept as a candidate rather than cut
+                    // now: a cheaper crossing of the same pair may still turn up.
+                    crossings.Add((spent[index] + spent[neighbour] + Cost(neighbour), index, neighbour));
+                    continue;
+                }
+
+                var reached = spent[index] + Cost(neighbour);
+
+                if (reached >= spent[neighbour])
+                    continue;
+
+                spent[neighbour] = reached;
+                owner[neighbour] = owner[index];
+                from[neighbour] = index;
+                frontier.Enqueue(neighbour, reached);
+            }
+        }
+
+        crossings.Sort(static (a, b) => a.Cost.CompareTo(b.Cost));
+
+        var joined = new int[sizes.Count];
+        for (var i = 0; i < joined.Length; i++)
+            joined[i] = i;
+
+        int Root(int piece)
+        {
+            while (joined[piece] != piece)
+                piece = joined[piece] = joined[joined[piece]];
+
+            return piece;
+        }
+
+        var lowered = 0;
+
+        foreach (var (_, near, far) in crossings)
+        {
+            var a = Root(owner[near]);
+            var b = Root(owner[far]);
+
+            // Already joined, by a crossing cheaper than this one.
+            if (a == b)
+                continue;
+
+            joined[a] = b;
+
+            lowered += Cut(relief, from, near, mountainFrom, passHeight);
+            lowered += Cut(relief, from, far, mountainFrom, passHeight);
+        }
+
+        return lowered;
+    }
+
+    /// <summary>
+    /// Walks back from where two floods met to the walkable ground the flood started on,
+    /// lowering every mountain on the way. Returns how many tiles it took down.
+    /// </summary>
+    private static int Cut(int[] relief, int[] from, int index, int mountainFrom, int passHeight)
+    {
+        var lowered = 0;
+
+        while (index >= 0)
+        {
+            if (relief[index] >= mountainFrom)
+            {
+                relief[index] = passHeight;
+                lowered++;
+            }
+
+            index = from[index];
+        }
+
+        return lowered;
+    }
+
+/// <summary>
+        /// How far each tile is from the nearest sea, in four-way steps, by a flood outwards
+        /// from the coast. Sea itself is zero.
+        /// <para>
+        /// A breadth-first walk rather than a distance transform: it visits each tile once, it
+        /// measures the same four-way steps everything else on this map moves in, and on the
+        /// largest map allowed it is a single pass over an array.
+        /// </para>
+        /// </summary>
+    public static int[] DistanceFromSea(bool[] land, int width, int height)
+        {
+            var distance = new int[land.Length];
+            var queue = new int[land.Length];
+            var head = 0;
+            var tail = 0;
+
+            for (var i = 0; i < land.Length; i++)
+            {
+                if (land[i])
+                    distance[i] = -1;
+                else
+                    queue[tail++] = i;
+            }
+
+            // Land with no sea anywhere: every tile is as far inland as it can be.
+            if (tail == 0)
+            {
+                Array.Fill(distance, width + height);
+                return distance;
+            }
+
+            while (head < tail)
+            {
+                var index = queue[head++];
+                var x = index % width;
+                var y = index / width;
+                var step = distance[index] + 1;
+
+                if (x > 0) Visit(index - 1);
+                if (x < width - 1) Visit(index + 1);
+                if (y > 0) Visit(index - width);
+                if (y < height - 1) Visit(index + width);
+
+                void Visit(int neighbour)
+                {
+                    if (distance[neighbour] != -1)
+                        return;
+
+                    distance[neighbour] = step;
+                    queue[tail++] = neighbour;
+                }
+            }
+
+            return distance;
+        }
+
     /// <summary>Whether piece <paramref name="a"/> beats piece <paramref name="b"/>.</summary>
     private static bool Stronger(int a, int b, List<int> sizes) =>
         sizes[a] > sizes[b] || (sizes[a] == sizes[b] && a < b);

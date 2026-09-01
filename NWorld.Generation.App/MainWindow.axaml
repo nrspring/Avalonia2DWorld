@@ -464,6 +464,176 @@
             </Border>
 
             <Border Classes="card">
+                <Expander ToolTip.Tip="{Binding TerrainHelp}">
+                    <Expander.Header>
+                        <TextBlock Classes="panelTitle" Text="Hills and Mountains" />
+                    </Expander.Header>
+
+                    <StackPanel Spacing="10">
+
+                        <!-- The shape of the field both bands are cut out of, so it sits
+                             above them both rather than inside either. -->
+                        <TextBlock Classes="field" Text="SHAPE" />
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RuggednessHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Rugged" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding Ruggedness}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding Ruggedness, StringFormat=\{0:0\}%}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RangeSizeHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Range" />
+                            <Slider Grid.Column="1" Minimum="4" Maximum="80"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding RangeSize}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding RangeSize, StringFormat=\{0:0\}t}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding TerrainSeedHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
+                            <TextBox Grid.Column="1" Text="{Binding TerrainSeed}" Watermark="1" />
+                            <Button Grid.Column="3" Classes="quiet" Content="New"
+                                    Command="{Binding NewTerrainSeedCommand}"
+                                    ToolTip.Tip="{Binding TerrainSeedHelp}" />
+                        </Grid>
+
+                        <Border Classes="rule" />
+
+                        <TextBlock Classes="field" Text="HILLS" />
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding HillCoverageHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="80"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding HillCoverage}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding HillCoverage, StringFormat=\{0:0\}%}" />
+                        </Grid>
+
+                        <TextBlock Classes="note"
+                                   Classes.warn="{Binding HasHillProblem}"
+                                   Text="{Binding HillSummary}"
+                                   ToolTip.Tip="{Binding RaiseHillsHelp}" />
+
+                        <Border ToolTip.Tip="{Binding RaiseHillsHelp}" Background="Transparent">
+                            <Button Classes="primary"
+                                    Content="Raise Hills"
+                                    Command="{Binding BuildHillsCommand}" />
+                        </Border>
+
+                        <Border Classes="rule" />
+
+                        <TextBlock Classes="field" Text="MOUNTAINS" />
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding MountainCoverageHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="60"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding MountainCoverage}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding MountainCoverage, StringFormat=\{0:0\}%}" />
+                        </Grid>
+
+                        <TextBlock Classes="note"
+                                   Classes.warn="{Binding HasMountainProblem}"
+                                   Text="{Binding MountainSummary}"
+                                   ToolTip.Tip="{Binding RaiseMountainsHelp}" />
+
+                        <Border ToolTip.Tip="{Binding RaiseMountainsHelp}" Background="Transparent">
+                            <Button Classes="primary"
+                                    Content="Raise Mountains"
+                                    Command="{Binding BuildMountainsCommand}" />
+                        </Border>
+
+                    </StackPanel>
+                </Expander>
+            </Border>
+
+            <Border Classes="card">
+                <Expander ToolTip.Tip="{Binding CoverHelp}">
+                    <Expander.Header>
+                        <TextBlock Classes="panelTitle" Text="Swamps and Deserts" />
+                    </Expander.Header>
+
+                    <StackPanel Spacing="10">
+
+                        <!-- The grain of both, so it sits above them both. -->
+                        <TextBlock Classes="field" Text="SHAPE" />
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding PatchSizeHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Patch" />
+                            <Slider Grid.Column="1" Minimum="3" Maximum="60"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding PatchSize}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding PatchSize, StringFormat=\{0:0\}t}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding CoverSeedHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
+                            <TextBox Grid.Column="1" Text="{Binding CoverSeed}" Watermark="1" />
+                            <Button Grid.Column="3" Classes="quiet" Content="New"
+                                    Command="{Binding NewCoverSeedCommand}"
+                                    ToolTip.Tip="{Binding CoverSeedHelp}" />
+                        </Grid>
+
+                        <Border Classes="rule" />
+
+                        <TextBlock Classes="field" Text="SWAMPS" />
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding SwampCoverageHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="60"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding SwampCoverage}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding SwampCoverage, StringFormat=\{0:0\}%}" />
+                        </Grid>
+
+                        <TextBlock Classes="note"
+                                   Classes.warn="{Binding HasSwampProblem}"
+                                   Text="{Binding SwampSummary}"
+                                   ToolTip.Tip="{Binding SwampCoverageHelp}" />
+
+                        <Border ToolTip.Tip="{Binding SwampCoverageHelp}" Background="Transparent">
+                            <Button Classes="primary"
+                                    Content="Spread Swamps"
+                                    Command="{Binding BuildSwampsCommand}" />
+                        </Border>
+
+                        <Border Classes="rule" />
+
+                        <TextBlock Classes="field" Text="DESERTS" />
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding DesertCoverageHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="60"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding DesertCoverage}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding DesertCoverage, StringFormat=\{0:0\}%}" />
+                        </Grid>
+
+                        <TextBlock Classes="note"
+                                   Classes.warn="{Binding HasDesertProblem}"
+                                   Text="{Binding DesertSummary}"
+                                   ToolTip.Tip="{Binding DesertCoverageHelp}" />
+
+                        <Border ToolTip.Tip="{Binding DesertCoverageHelp}" Background="Transparent">
+                            <Button Classes="primary"
+                                    Content="Spread Deserts"
+                                    Command="{Binding BuildDesertsCommand}" />
+                        </Border>
+
+                    </StackPanel>
+                </Expander>
+            </Border>
+
+            <Border Classes="card">
                 <Expander ToolTip.Tip="{Binding ViewHelp}">
                     <Expander.Header>
                         <TextBlock Classes="panelTitle" Text="View" />

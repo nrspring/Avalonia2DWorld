@@ -31,6 +31,17 @@ public sealed record MapSettings
     public double? IslandCoastHug { get; init; }
     public string? IslandSeed { get; init; }
 
+    public double? MountainCoverage { get; init; }
+    public double? HillCoverage { get; init; }
+    public double? Ruggedness { get; init; }
+    public double? RangeSize { get; init; }
+    public string? TerrainSeed { get; init; }
+
+    public double? SwampCoverage { get; init; }
+    public double? DesertCoverage { get; init; }
+    public double? PatchSize { get; init; }
+    public string? CoverSeed { get; init; }
+
     /// <summary>Zoom, as a tile size in pixels, and where the view was looking.</summary>
     public int? TileSize { get; init; }
 

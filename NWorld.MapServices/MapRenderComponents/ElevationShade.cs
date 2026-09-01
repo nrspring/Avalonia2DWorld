@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using NWorld.Map.Models;
+using NWorld.MapServices.Constants;
 using SkiaSharp;
 
 namespace NWorld.MapServices.MapRenderComponents
@@ -37,23 +38,13 @@ namespace NWorld.MapServices.MapRenderComponents
     /// </summary>
     internal static class ElevationShade
     {
-        /// <summary>Sea level. The datum, and not something that can be lifted.</summary>
-        public const int SeaLevel = 0;
-
-        /// <summary>Flat land: the elevation that is drawn exactly as it would be without this.</summary>
-        public const int Ground = 1;
-
-        /// <summary>The first and last elevations that count as hills.</summary>
-        public const int HillsFrom = 2;
-
-        /// <inheritdoc cref="HillsFrom"/>
-        public const int HillsTo = 10;
-
-        /// <summary>The first and last elevations that count as mountains.</summary>
-        public const int MountainsFrom = 11;
-
-        /// <inheritdoc cref="MountainsFrom"/>
-        public const int MountainsTo = 30;
+        // The bands themselves live in Elevations, where the generators can see them too.
+        // Named here only to keep the table below readable.
+        private const int SeaLevel = Elevations.Sea;
+        private const int Ground = Elevations.Flat;
+        private const int HillsTo = Elevations.HillsTo;
+        private const int MountainsFrom = Elevations.MountainsFrom;
+        private const int MountainsTo = Elevations.MountainsTo;
 
         // The lift at each end of each band, before the screen rolls it off. Banded rather
         // than one straight line from 1 to 30 so that the bands are legible on the map: spread
@@ -63,8 +54,8 @@ namespace NWorld.MapServices.MapRenderComponents
         // see.
         private const float HillsFloor = 10f;
         private const float HillsCeiling = 48f;
-        private const float MountainsFloor = 56f;
-        private const float MountainsCeiling = 112f;
+        private const float MountainsFloor = 78f;
+        private const float MountainsCeiling = 205f;
 
         /// <summary>
         /// How much of the lift each channel gets.
@@ -77,6 +68,18 @@ namespace NWorld.MapServices.MapRenderComponents
         /// </para>
         /// </summary>
         private static readonly (float Red, float Green, float Blue) Tint = (0.85f, 1f, 0.5f);
+
+        /// <summary>
+        /// What the tint becomes at the very top of the scale.
+        /// <para>
+        /// Neutral, which is snow. Holding blue back is what keeps a hillside green, and it is
+        /// exactly the wrong thing at thirty: a peak is bare rock and ice, and it has no
+        /// business being the same colour as the meadow it stands over. So the tint is walked
+        /// from one to the other across the mountain band -- green at the foot of a range,
+        /// white at the summit, and everything between shading through.
+        /// </para>
+        /// </summary>
+        private static readonly (float Red, float Green, float Blue) Snow = (1f, 1f, 1f);
 
         /// <summary>
         /// One paint per elevation, worked out once, null wherever the lift comes to nothing.
@@ -143,7 +146,8 @@ namespace NWorld.MapServices.MapRenderComponents
                 var lift = elevation switch
                 {
                     <= Ground => 0f,
-                    <= HillsTo => Across(elevation, HillsFrom, HillsTo, HillsFloor, HillsCeiling),
+                    <= HillsTo => Across(
+                        elevation, Elevations.HillsFrom, HillsTo, HillsFloor, HillsCeiling),
                     _ => Across(elevation, MountainsFrom, MountainsTo, MountainsFloor, MountainsCeiling),
                 };
 
@@ -153,12 +157,20 @@ namespace NWorld.MapServices.MapRenderComponents
                 if (lift <= 0f)
                     continue;
 
+                // Nothing below the mountains, then all the way over across the band.
+                var snow = elevation < MountainsFrom
+                    ? 0f
+                    : (float)(elevation - MountainsFrom) / (MountainsTo - MountainsFrom);
+
+                var red = Tint.Red + ((Snow.Red - Tint.Red) * snow);
+                var green = Tint.Green + ((Snow.Green - Tint.Green) * snow);
+                var blue = Tint.Blue + ((Snow.Blue - Tint.Blue) * snow);
+
                 paints[elevation] = new SKPaint
                 {
                     // Opaque, which is what keeps the lift whole: any less alpha would be
                     // unpremultiplied on the way in and take the lift down with it.
-                    Color = new SKColor(
-                        Level(lift * Tint.Red), Level(lift * Tint.Green), Level(lift * Tint.Blue)),
+                    Color = new SKColor(Level(lift * red), Level(lift * green), Level(lift * blue)),
                     BlendMode = SKBlendMode.Screen,
 
                     // Must stay off. Runs share their edges exactly; antialiased, both sides of

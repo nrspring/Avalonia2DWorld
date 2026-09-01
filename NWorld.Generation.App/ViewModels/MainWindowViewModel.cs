@@ -10,6 +10,7 @@ using NWorld.Generation.App.Persistence;
 using NWorld.Map.Constants;
 using NWorld.Map.Models;
 using NWorld.Map.ViewModels;
+using NWorld.MapServices.Constants;
 using NWorld.MapServices.ExtensionMethods;
 using NWorld.MapServices.MapRenderComponents;
 using NWorld.MapServices.Renderers;
@@ -185,6 +186,60 @@ public partial class MainWindowViewModel : MapViewModelBase
     [NotifyPropertyChangedFor(nameof(IslandSummary), nameof(HasIslandProblem))]
     private string _islandSeed = "1";
 
+    /// <summary>How much of the land ends up as mountain, as a percentage.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MountainSummary))]
+    private double _mountainCoverage = 10;
+
+    /// <summary>How much of the land ends up as hills, as a percentage.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HillSummary))]
+    private double _hillCoverage = 25;
+
+    /// <summary>
+    /// How broken the high ground is: low is broad rounded upland, high is sharp ranges with
+    /// the peaks strung along their crests.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HillSummary), nameof(MountainSummary))]
+    private double _ruggedness = 55;
+
+    /// <summary>Roughly how far a range runs before it breaks, in tiles.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HillSummary), nameof(MountainSummary))]
+    private double _rangeSize = 26;
+
+    /// <inheritdoc cref="ContinentSeed"/>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(BuildHillsCommand), nameof(BuildMountainsCommand))]
+    [NotifyPropertyChangedFor(
+        nameof(HillSummary), nameof(HasHillProblem),
+        nameof(MountainSummary), nameof(HasMountainProblem))]
+    private string _terrainSeed = "1";
+
+    /// <summary>How much of the land ends up as swamp, as a percentage.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SwampSummary))]
+    private double _swampCoverage = 8;
+
+    /// <summary>How much of the land ends up as desert, as a percentage.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DesertSummary))]
+    private double _desertCoverage = 10;
+
+    /// <summary>Roughly how many tiles across one patch of swamp or desert runs.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SwampSummary), nameof(DesertSummary))]
+    private double _patchSize = 18;
+
+    /// <inheritdoc cref="ContinentSeed"/>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(BuildSwampsCommand), nameof(BuildDesertsCommand))]
+    [NotifyPropertyChangedFor(
+        nameof(SwampSummary), nameof(HasSwampProblem),
+        nameof(DesertSummary), nameof(HasDesertProblem))]
+    private string _coverSeed = "1";
+
     /// <summary>
     /// Whether the land carries its elevation as a number drawn over each tile. The sea does
     /// not -- see <see cref="IsWater"/>.
@@ -246,6 +301,124 @@ public partial class MainWindowViewModel : MapViewModelBase
         "Turning it off stops the repaint loop altogether, so the map is redrawn only when " +
         "something changes it. That costs nothing while the map sits idle, and it leaves " +
         "the frame rate with nothing to measure.";
+
+    /// <summary>What the Hills and Mountains panel is for.</summary>
+    public string TerrainHelp =>
+        ("Raise the flat land into hills and mountains. It shapes height only -- not one " +
+         "tile of coast moves, and no land is added or taken away.@@" +
+         "The two are raised separately, by their own buttons, and neither disturbs the " +
+         "other: press either as often as you like without the second press piling onto the " +
+         "first. Shape and Seed are shared, which is what keeps them one landscape -- the " +
+         "hills come out as the skirts of the ranges rather than as something scattered on " +
+         "its own.@@" +
+         "Run them after the land is the shape you want. Building continents or scattering " +
+         "islands starts the world over from sea level, so anything raised here goes with " +
+         "it and has to be raised again.@@" +
+         "Turn on Elevation in the View panel to read the numbers off the tiles.").Replace("@@", "\n\n");
+
+    /// <summary>The Raise Hills tooltip.</summary>
+    public string RaiseHillsHelp =>
+        ("Lay hills over the flat land, at elevation 2 to 10.@@" +
+         "Mountains are left exactly where they are, and the hills take only ground the " +
+         "mountains are not already standing on -- so the figure above is what is left of " +
+         "the dial once a range has had its share.@@" +
+         "Pressing this again replaces the hills rather than adding more.").Replace("@@", "\n\n");
+
+    /// <summary>The Raise Mountains tooltip.</summary>
+    public string RaiseMountainsHelp =>
+        ("Raise mountain ranges, at elevation 11 to 30, and cut passes through them.@@" +
+         "The hills are left where they are. A range that would wall off part of a " +
+         "landmass has its lowest saddle cut down to hill height, so every part of a " +
+         "continent can be walked to from every other part without climbing -- which costs " +
+         "a fraction of a percent of the mountain figure above.@@" +
+         "Pressing this again replaces the ranges rather than adding more.").Replace("@@", "\n\n");
+
+    /// <summary>The mountain-coverage tooltip.</summary>
+    public string MountainCoverageHelp =>
+        ("How much of the land ends up as mountain -- elevation 11 to 30.@@" +
+         "Of the land rather than of the map, so it means the same thing on a world that is " +
+         "mostly ocean as on one that is mostly continent. Exact, like the land dial: the " +
+         "generator scores every tile and takes the best of them, so this figure holds " +
+         "however the other dials are set.@@" +
+         "Mountains are raised first and hills fill in around them, so this dial is the one " +
+         "that has its share whatever else is asked for.").Replace("@@", "\n\n");
+
+    /// <summary>The hill-coverage tooltip.</summary>
+    public string HillCoverageHelp =>
+        ("How much of the land ends up as hills -- elevation 2 to 10.@@" +
+         "Counted as a share of all the land, but the hills can only have ground the " +
+         "mountains are not on. Ask for more than is left and you get what is left.@@" +
+         "Hills are the next band down from the same field the mountains come out of, which " +
+         "is why they gather around the ranges rather than being scattered at random.").Replace("@@", "\n\n");
+
+    /// <summary>The ruggedness tooltip.</summary>
+    public string RuggednessHelp =>
+        ("Whether the high ground is rounded or sharp. Shared: it shapes the field both the " +
+         "hills and the mountains are cut out of.@@" +
+         "Low is broad swells of upland with the height spread over them. High folds the " +
+         "field about its own zero, which puts the peaks on creases -- and a crease in a " +
+         "smooth field is a line, which is what makes a range read as a range rather than " +
+         "as a patch.@@" +
+         "It changes where the mountains are, never how much mountain there is.").Replace("@@", "\n\n");
+
+    /// <summary>The range-size tooltip.</summary>
+    public string RangeSizeHelp =>
+        ("Roughly how many tiles a range runs for before it breaks up. Shared, like Rugged.@@" +
+         "Small values give scattered massifs; large ones give long chains that cross the " +
+         "whole of a continent. It also sets how far inland the high ground is pushed, since " +
+         "a range that runs down into the sea reads as a drowned world rather than a " +
+         "continent.").Replace("@@", "\n\n");
+
+    /// <inheritdoc cref="ContinentSeedHelp"/>
+    public string TerrainSeedHelp =>
+        ("Any whole number. The same seed with the same settings raises the same hills and " +
+         "the same mountains, every time.@@" +
+         "The relief is built on the land it is given, so changing the land seed changes " +
+         "this too -- the same terrain seed on a different coastline is a different world.").Replace("@@", "\n\n");
+
+    /// <summary>What the Swamps and Deserts panel is for.</summary>
+    public string CoverHelp =>
+        ("Spread swamp and desert over the ground, in place of grass.@@" +
+         "Neither can go anywhere but flat land or hills. Mountains are rock and ice, the sea " +
+         "is not ground at all, and raising a range over a marsh takes the marsh with it -- " +
+         "it is eleven thousand feet up now.@@" +
+         "Like the panel above, the two have a button each and neither disturbs the other. " +
+         "Nothing here moves a coast or changes a height: a swamp is what a tile is made of, " +
+         "not where it is.").Replace("@@", "\n\n");
+
+    /// <summary>The swamp-coverage tooltip.</summary>
+    public string SwampCoverageHelp =>
+        ("How much of the land ends up as swamp.@@" +
+         "Swamps are water that has nowhere to drain, so they look for the lowest ground they " +
+         "can find and they lean towards the coast. A bog on a hilltop is wrong however near " +
+         "the sea it is, and one in the middle of a continent has nothing feeding it.@@" +
+         "Counted as a share of all the land, but only lowland can hold it. Ask for more than " +
+         "there is lowland and you get the lowland there is.").Replace("@@", "\n\n");
+
+    /// <summary>The desert-coverage tooltip.</summary>
+    public string DesertCoverageHelp =>
+        ("How much of the land ends up as desert.@@" +
+         "Deserts are land the weather cannot reach, so they look for the deep interior. " +
+         "Height does not come into it -- sand is as happy on a hill as on a plain, so long " +
+         "as it is not a mountain.@@" +
+         "Counted the same way as the swamps, and it will not take ground a swamp is already " +
+         "on.@@" +
+         "Neither writes over the other, so whichever you spread first gets first pick of the " +
+         "ground they both want -- about one tile of cover in thirteen. Either way both dials " +
+         "are met in full.").Replace("@@", "\n\n");
+
+    /// <summary>The patch-size tooltip.</summary>
+    public string PatchSizeHelp =>
+        ("Roughly how many tiles across one patch runs. Shared: it sets the grain of both.@@" +
+         "Small values scatter marshes and sand pans about; large ones give one great fen or " +
+         "one great erg. It does not change how much of either there is.").Replace("@@", "\n\n");
+
+    /// <inheritdoc cref="ContinentSeedHelp"/>
+    public string CoverSeedHelp =>
+        ("Any whole number. The same seed with the same settings spreads the same swamps and " +
+         "the same deserts, every time.@@" +
+         "The two are dealt off this one seed but not off one field, or a swamp and a desert " +
+         "would want exactly the same ground and only the first one pressed would get any.").Replace("@@", "\n\n");
 
     /// <summary>The elevation toggle's tooltip.</summary>
     public string ElevationHelp =>
@@ -341,7 +514,7 @@ public partial class MainWindowViewModel : MapViewModelBase
          "comes, which reads as more islands near the coasts than far from them.@@" +
          "They never touch the mainland whatever this says, and they keep the same " +
          "distance from each other: a channel of clear water is always left.")
-            .Replace("@@", DoubleBreak);
+            .Replace("@@", "\n\n");
 
     /// <summary>The island-seed tooltip.</summary>
     public string IslandSeedHelp =>
@@ -553,6 +726,283 @@ public partial class MainWindowViewModel : MapViewModelBase
         IslandSeed = Random.Shared.Next(1, 1_000_000).ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
+    /// The line under the hill controls: what the next raise will do, or what is stopping it.
+    /// </summary>
+    public string HillSummary
+    {
+        get
+        {
+            if (TerrainTrouble() is { } trouble)
+                return trouble;
+
+            // What the pass will actually do rather than what the dial says: the hills can
+            // only have ground the mountains are not already standing on.
+            var acres = Acres();
+            var standing = MountainTiles();
+            var hills = Math.Min((long)(acres * HillCoverage / 100), acres - standing);
+
+            return $"{hills:N0} tiles of hills, around whatever is already up.";
+        }
+    }
+
+    /// <inheritdoc cref="HasSizeProblem"/>
+    public bool HasHillProblem => !CanBuildTerrain();
+
+    /// <summary>
+    /// The line under the mountain controls.
+    /// </summary>
+    public string MountainSummary
+    {
+        get
+        {
+            if (TerrainTrouble() is { } trouble)
+                return trouble;
+
+            return $"{(long)(Acres() * MountainCoverage / 100):N0} tiles of mountain, with passes cut through.";
+        }
+    }
+
+    /// <inheritdoc cref="HasSizeProblem"/>
+    public bool HasMountainProblem => !CanBuildTerrain();
+
+    /// <summary>
+    /// What is stopping either terrain pass, or null if nothing is. The two summaries say the
+    /// same things about the same conditions, so they say them from one place.
+    /// </summary>
+    private string? TerrainTrouble()
+    {
+        if (Tiles is null)
+            return "Make a map in Start first.";
+
+        if (_land is null)
+            return "Build some land first.";
+
+        return TryReadSeed(TerrainSeed, out _) ? null : "Seed: any whole number.";
+    }
+
+    /// <summary>How many tiles of land there are to work with.</summary>
+    private long Acres()
+    {
+        if (_land is not { } land)
+            return 0;
+
+        var acres = 0L;
+        foreach (var isLand in land)
+        {
+            if (isLand)
+                acres++;
+        }
+
+        return acres;
+    }
+
+    /// <summary>How much of the map is already standing at mountain height.</summary>
+    private long MountainTiles()
+    {
+        if (Tiles is not { } tiles)
+            return 0;
+
+        var standing = 0L;
+        for (var i = 0; i < tiles.Count; i++)
+        {
+            if (tiles[i].Elevation >= Elevations.MountainsFrom)
+                standing++;
+        }
+
+        return standing;
+    }
+
+    /// <summary>
+    /// Raises the hills, leaving any mountains where they are.
+    /// <para>
+    /// Height only. The coast does not move, so the land mask is left exactly as it was and
+    /// every pass that drew it still holds -- these are the one kind of build that can be run
+    /// over a finished world without starting it over.
+    /// </para>
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanBuildTerrain))]
+    private void BuildHills() => Raise(TerrainBuilder.RaiseHills);
+
+    /// <summary>Raises the mountains, leaving any hills where they are.</summary>
+    /// <inheritdoc cref="BuildHills" path="/summary/para"/>
+    [RelayCommand(CanExecute = nameof(CanBuildTerrain))]
+    private void BuildMountains() => Raise(TerrainBuilder.RaiseMountains);
+
+    /// <summary>
+    /// Runs one of the terrain passes over the map and puts the result on screen.
+    /// <para>
+    /// The heights the pass builds on are read back off the tiles rather than kept alongside
+    /// them. The tiles are where the elevation actually lives -- it is what gets saved, and
+    /// what undo restores -- so anything held beside them would be a second copy to keep in
+    /// step, and the one that went stale would be this one.
+    /// </para>
+    /// </summary>
+    private void Raise(
+        Func<int, int, bool[], int[], TerrainSettings, int[]> pass)
+    {
+        if (_map is not { } map || _land is not { } land || !TryReadSeed(TerrainSeed, out var seed))
+            return;
+
+        Remember();
+
+        var relief = pass(map.Width, map.Height, land, CurrentRelief(map), new TerrainSettings(
+            MountainCoverage / 100, HillCoverage / 100, Ruggedness / 100, RangeSize, seed));
+
+        // Carried through rather than cleared: raising a range is not a reason to drain the
+        // marshes on the other side of the continent. What the range itself rises over does
+        // lose its cover, which Rebuild sees to.
+        Rebuild(map, relief, CurrentCover(map));
+    }
+
+    /// <summary>The height of every tile, in reading order.</summary>
+    private static int[] CurrentRelief(TileMap map)
+    {
+        var tiles = map.Tiles;
+        var relief = new int[tiles.Count];
+
+        for (var i = 0; i < relief.Length; i++)
+            relief[i] = tiles[i].Elevation;
+
+        return relief;
+    }
+
+    /// <summary>
+    /// What every tile is made of, in reading order. Read back off the ground each tile is
+    /// drawn with, for the same reason the heights are: the tiles are where this actually
+    /// lives, and a copy kept beside them would be the one that went stale.
+    /// </summary>
+    private static GroundCover[] CurrentCover(TileMap map)
+    {
+        var tiles = map.Tiles;
+        var cover = new GroundCover[tiles.Count];
+
+        for (var i = 0; i < cover.Length; i++)
+        {
+            if (!tiles[i].MapRenderComponents.TryGetValue(RenderComponentLayers.BaseGround, out var ground))
+                continue;
+
+            cover[i] =
+                ground.ComponentType == MapRenderComponentConstants.Swamp ? GroundCover.Swamp :
+                ground.ComponentType == MapRenderComponentConstants.Desert ? GroundCover.Desert :
+                GroundCover.Grass;
+        }
+
+        return cover;
+    }
+
+    /// <summary>
+    /// Whether there is land to raise, and a seed to raise it with. Land and not merely a
+    /// map: there is nothing to do to an empty ocean, and a button that would do nothing
+    /// should say so by being grey.
+    /// </summary>
+    private bool CanBuildTerrain() =>
+        _map is not null && _land is not null && TryReadSeed(TerrainSeed, out _);
+
+    /// <summary>Fills the terrain seed box with a new one.</summary>
+    [RelayCommand]
+    private void NewTerrainSeed() =>
+        TerrainSeed = Random.Shared.Next(1, 1_000_000).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// The line under the swamp controls: what the next spread will do, or what is stopping it.
+    /// </summary>
+    public string SwampSummary => CoverSummary(SwampCoverage, "of swamp, in the low wet ground");
+
+    /// <inheritdoc cref="HasSizeProblem"/>
+    public bool HasSwampProblem => !CanSpreadCover();
+
+    /// <summary>The line under the desert controls.</summary>
+    public string DesertSummary => CoverSummary(DesertCoverage, "of desert, out in the interior");
+
+    /// <inheritdoc cref="HasSizeProblem"/>
+    public bool HasDesertProblem => !CanSpreadCover();
+
+    /// <summary>
+    /// What one of the cover passes will actually manage, which is not always what its dial
+    /// says: only lowland can hold either, so a world that is mostly mountain has less to give
+    /// than the dial asks for.
+    /// </summary>
+    private string CoverSummary(double coverage, string what)
+    {
+        if (Tiles is null)
+            return "Make a map in Start first.";
+
+        if (_land is null)
+            return "Build some land first.";
+
+        if (!TryReadSeed(CoverSeed, out _))
+            return "Seed: any whole number.";
+
+        var lowland = LowlandTiles();
+        var tiles = Math.Min((long)(Acres() * coverage / 100), lowland);
+
+        return lowland == 0
+            ? "No lowland to spread over -- it is all mountain."
+            : $"{tiles:N0} tiles {what}.";
+    }
+
+    /// <summary>How much of the map is ground a swamp or a desert could sit on.</summary>
+    private long LowlandTiles()
+    {
+        if (Tiles is not { } tiles)
+            return 0;
+
+        var lowland = 0L;
+        for (var i = 0; i < tiles.Count; i++)
+        {
+            if (Elevations.IsLowland(tiles[i].Elevation))
+                lowland++;
+        }
+
+        return lowland;
+    }
+
+    /// <summary>
+    /// Spreads swamp over the low wet ground, leaving any desert where it is.
+    /// <para>
+    /// Cover only. Nothing here moves a coast or changes a height -- a swamp is what a tile is
+    /// made of, not where it is -- so the land and the relief both come through untouched.
+    /// </para>
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanSpreadCover))]
+    private void BuildSwamps() =>
+        Spread(GroundCoverBuilder.SpreadSwamps, SwampCoverage);
+
+    /// <summary>Spreads desert through the interior, leaving any swamp where it is.</summary>
+    /// <inheritdoc cref="BuildSwamps" path="/summary/para"/>
+    [RelayCommand(CanExecute = nameof(CanSpreadCover))]
+    private void BuildDeserts() =>
+        Spread(GroundCoverBuilder.SpreadDeserts, DesertCoverage);
+
+    /// <summary>Runs one of the cover passes and puts the result on screen.</summary>
+    /// <inheritdoc cref="Raise(Func{int, int, bool[], int[], TerrainSettings, int[]})" path="/summary/para"/>
+    private void Spread(
+        Func<int, int, int[], GroundCover[], CoverSettings, GroundCover[]> pass, double coverage)
+    {
+        if (_map is not { } map || _land is null || !TryReadSeed(CoverSeed, out var seed))
+            return;
+
+        Remember();
+
+        var relief = CurrentRelief(map);
+
+        var cover = pass(
+            map.Width, map.Height, relief, CurrentCover(map),
+            new CoverSettings(coverage / 100, PatchSize, seed));
+
+        Rebuild(map, relief, cover);
+    }
+
+    /// <summary>Whether there is land to spread over, and a seed to spread it with.</summary>
+    private bool CanSpreadCover() =>
+        _map is not null && _land is not null && TryReadSeed(CoverSeed, out _);
+
+    /// <summary>Fills the cover seed box with a new one.</summary>
+    [RelayCommand]
+    private void NewCoverSeed() =>
+        CoverSeed = Random.Shared.Next(1, 1_000_000).ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>
     /// Writes the map and the current settings to <paramref name="stream"/>.
     /// <para>
     /// Takes a stream rather than a path because choosing the file is the window's job: a
@@ -578,6 +1028,15 @@ public partial class MainWindowViewModel : MapViewModelBase
                 IslandSize = IslandSize,
                 IslandCoastHug = IslandCoastHug,
                 IslandSeed = IslandSeed,
+                MountainCoverage = MountainCoverage,
+                HillCoverage = HillCoverage,
+                Ruggedness = Ruggedness,
+                RangeSize = RangeSize,
+                TerrainSeed = TerrainSeed,
+                SwampCoverage = SwampCoverage,
+                DesertCoverage = DesertCoverage,
+                PatchSize = PatchSize,
+                CoverSeed = CoverSeed,
                 TileSize = Options.TileSize,
                 OriginX = Options.OriginX,
                 OriginY = Options.OriginY,
@@ -649,6 +1108,17 @@ public partial class MainWindowViewModel : MapViewModelBase
         IslandSize = settings.IslandSize ?? IslandSize;
         IslandCoastHug = settings.IslandCoastHug ?? IslandCoastHug;
         IslandSeed = settings.IslandSeed ?? IslandSeed;
+
+        MountainCoverage = settings.MountainCoverage ?? MountainCoverage;
+        HillCoverage = settings.HillCoverage ?? HillCoverage;
+        Ruggedness = settings.Ruggedness ?? Ruggedness;
+        RangeSize = settings.RangeSize ?? RangeSize;
+        TerrainSeed = settings.TerrainSeed ?? TerrainSeed;
+
+        SwampCoverage = settings.SwampCoverage ?? SwampCoverage;
+        DesertCoverage = settings.DesertCoverage ?? DesertCoverage;
+        PatchSize = settings.PatchSize ?? PatchSize;
+        CoverSeed = settings.CoverSeed ?? CoverSeed;
 
         // The size boxes describe the next map to be made, and the one just opened is the
         // best guess at what that should be.
@@ -759,10 +1229,43 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// </summary>
     private void Raise(TileMap map, bool[] land)
     {
+        var relief = new int[land.Length];
+
+        for (var i = 0; i < land.Length; i++)
+            relief[i] = land[i] ? Elevations.Flat : Elevations.Sea;
+
+        // Grass everywhere, because this is where the world starts over: a land pass draws a
+        // new coastline, and a swamp that survived it would be a swamp somewhere nobody put
+        // one. The relief goes the same way, for the same reason.
+        Rebuild(map, relief, new GroundCover[land.Length]);
+    }
+
+    /// <summary>
+    /// Rebuilds the map from an elevation and a ground cover per tile: deep water wherever
+    /// the elevation says nothing, and the cover it is given wherever it says anything.
+    /// <para>
+    /// The one place a map is made, so that drawing a coastline, raising a mountain range and
+    /// flooding a marsh are the same operation handed different numbers.
+    /// </para>
+    /// </summary>
+    private void Rebuild(TileMap map, int[] relief, GroundCover[] cover)
+    {
         _map = new TileMap(map.Width, map.Height, map.OriginX, map.OriginY, coordinate =>
-            land[((coordinate.Y - map.OriginY) * map.Width) + (coordinate.X - map.OriginX)]
-                ? BuildLandTile(coordinate)
-                : BuildOceanTile(coordinate));
+        {
+            var index = ((coordinate.Y - map.OriginY) * map.Width) + (coordinate.X - map.OriginX);
+            var elevation = relief[index];
+
+            if (elevation <= Elevations.Sea)
+                return BuildOceanTile(coordinate);
+
+            // The one place the rule is enforced, so nothing else has to remember it: swamp
+            // and desert are lowland covers, and ground raised out of the lowlands loses
+            // whatever was on it. A pass may hand in a cover for a tile that has since become
+            // a mountain -- the terrain passes do exactly that -- and this is where it goes.
+            var ground = Elevations.IsLowland(elevation) ? cover[index] : GroundCover.Grass;
+
+            return BuildLandTile(coordinate, elevation, ground);
+        });
 
         // Built labelled or not as the panel asks, which is a pass over the tiles this one
         // has just made anyway -- cheaper than raising the land and then walking all of it
@@ -834,12 +1337,24 @@ public partial class MainWindowViewModel : MapViewModelBase
     {
         BuildContinentsCommand.NotifyCanExecuteChanged();
         BuildIslandsCommand.NotifyCanExecuteChanged();
+        BuildHillsCommand.NotifyCanExecuteChanged();
+        BuildMountainsCommand.NotifyCanExecuteChanged();
+        BuildSwampsCommand.NotifyCanExecuteChanged();
+        BuildDesertsCommand.NotifyCanExecuteChanged();
         UndoCommand.NotifyCanExecuteChanged();
 
         OnPropertyChanged(nameof(LandSummary));
         OnPropertyChanged(nameof(HasLandProblem));
         OnPropertyChanged(nameof(IslandSummary));
         OnPropertyChanged(nameof(HasIslandProblem));
+        OnPropertyChanged(nameof(HillSummary));
+        OnPropertyChanged(nameof(HasHillProblem));
+        OnPropertyChanged(nameof(MountainSummary));
+        OnPropertyChanged(nameof(HasMountainProblem));
+        OnPropertyChanged(nameof(SwampSummary));
+        OnPropertyChanged(nameof(HasSwampProblem));
+        OnPropertyChanged(nameof(DesertSummary));
+        OnPropertyChanged(nameof(HasDesertProblem));
     }
 
     /// <summary>
@@ -999,14 +1514,21 @@ public partial class MainWindowViewModel : MapViewModelBase
         TileMap Map, bool[]? Land, TileCoordinate? Hovered, TileCoordinate? Selected);
 
     /// <summary>
-    /// One tile of continent: grass at elevation 1. One above the sea, which is all
-    /// "above water" needs to mean until there is anything to put on it.
+    /// One tile of continent, at the height it stands. Elevation 1 is flat land -- one above
+    /// the sea, and all a land pass raises on its own; the Hills and Mountains panel is what
+    /// puts anything higher here.
     /// </summary>
-    private MapTile BuildLandTile(TileCoordinate coordinate)
+    private MapTile BuildLandTile(
+        TileCoordinate coordinate, int elevation = Elevations.Flat, GroundCover cover = GroundCover.Grass)
     {
-        var tile = new MapTile { X = coordinate.X, Y = coordinate.Y, Elevation = 1 };
+        var tile = new MapTile { X = coordinate.X, Y = coordinate.Y, Elevation = elevation };
 
-        Ground(tile, MapRenderComponentConstants.Grass);
+        Ground(tile, cover switch
+        {
+            GroundCover.Swamp => MapRenderComponentConstants.Swamp,
+            GroundCover.Desert => MapRenderComponentConstants.Desert,
+            _ => MapRenderComponentConstants.Grass,
+        });
         Label(tile);
 
         return tile;
