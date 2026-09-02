@@ -52,6 +52,15 @@ public sealed record MapSettings
     public double? RiverLength { get; init; }
     public string? RiverSeed { get; init; }
 
+    public double? IronCoverage { get; init; }
+    public double? WoodCoverage { get; init; }
+    public double? OilCoverage { get; init; }
+    public double? SulphurCoverage { get; init; }
+    public double? StoneCoverage { get; init; }
+    public double? ResourcePatchSize { get; init; }
+    public double? ResourceClustering { get; init; }
+    public string? ResourceSeed { get; init; }
+
     /// <summary>Zoom, as a tile size in pixels, and where the view was looking.</summary>
     public int? TileSize { get; init; }
 

@@ -293,6 +293,60 @@ public partial class MainWindowViewModel : MapViewModelBase
     [NotifyPropertyChangedFor(nameof(RiverSummary), nameof(HasRiverProblem))]
     private string _riverSeed = "1";
 
+    /// <summary>How much of the land ends up carrying iron, as a percentage.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IronSummary))]
+    private double _ironCoverage = 4;
+
+    /// <summary>How much of the land ends up carrying timber, as a percentage.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(WoodSummary))]
+    private double _woodCoverage = 10;
+
+    /// <summary>How much of the land ends up carrying oil, as a percentage.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OilSummary))]
+    private double _oilCoverage = 3;
+
+    /// <summary>How much of the land ends up carrying sulphur, as a percentage.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SulphurSummary))]
+    private double _sulphurCoverage = 2;
+
+    /// <summary>How much of the land ends up carrying stone, as a percentage.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StoneSummary))]
+    private double _stoneCoverage = 6;
+
+    /// <summary>
+    /// Roughly how many tiles across one field of a resource runs. Shared by all five, as the
+    /// patch size is shared by the two covers: it is the grain of the world's wealth rather
+    /// than a fact about any one resource.
+    /// <para>
+    /// Its own dial and not the cover panel's, because there is no reason a world of small
+    /// marshes should also be a world of small ore fields.
+    /// </para>
+    /// </summary>
+    [ObservableProperty]
+    private double _resourcePatchSize = 10;
+
+    /// <summary>
+    /// How much the fields gather together, as a percentage: nothing sprinkles them over
+    /// whatever ground suits them, full heaps them into a few districts.
+    /// </summary>
+    [ObservableProperty]
+    private double _resourceClustering = 45;
+
+    /// <inheritdoc cref="ContinentSeed"/>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(
+        nameof(BuildIronCommand), nameof(BuildWoodCommand), nameof(BuildOilCommand),
+        nameof(BuildSulphurCommand), nameof(BuildStoneCommand), nameof(BuildAllResourcesCommand))]
+    [NotifyPropertyChangedFor(
+        nameof(IronSummary), nameof(WoodSummary), nameof(OilSummary),
+        nameof(SulphurSummary), nameof(StoneSummary), nameof(HasResourceProblem))]
+    private string _resourceSeed = "1";
+
     /// <summary>
     /// Whether the land carries its elevation as a number drawn over each tile. The sea does
     /// not -- see <see cref="IsWater"/>.
@@ -581,6 +635,86 @@ public partial class MainWindowViewModel : MapViewModelBase
          "the same deserts, every time.@@" +
          "The two are dealt off this one seed but not off one field, or a swamp and a desert " +
          "would want exactly the same ground and only the first one pressed would get any.").Replace("@@", "\n\n");
+
+    /// <summary>What the Resources panel is for.</summary>
+    public string ResourceHelp =>
+        ("Scatter what the land is worth over it: ore, timber, oil, brimstone and stone.@@" +
+         "A resource is what a tile has rather than what it is made of, so it is drawn over " +
+         "the ground instead of in place of it -- iron in a marsh is an ordinary thing for a " +
+         "map to say, and nothing here moves a coast, a height or a cover.@@" +
+         "Each has a button of its own and none disturbs the others, but a tile carries one " +
+         "deposit or none: whichever you spread first gets first pick of the ground two of " +
+         "them both want. Spread All presses the five in turn.@@" +
+         "Run them last. They are laid on the world as it stands, and anything that rebuilds " +
+         "the land underneath -- a new coastline above all -- takes its deposits with it.").Replace("@@", "\n\n");
+
+    /// <summary>The iron tooltip.</summary>
+    public string IronCoverageHelp =>
+        ("How much of the land ends up carrying iron.@@" +
+         "Ore wants the high ground, where the rock is at the surface rather than buried " +
+         "under everything that has settled on it since. It is barred from nowhere on land, " +
+         "though: a seam in the lowlands is unusual and not impossible.@@" +
+         "Counted as a share of all the land, like every other coverage dial.").Replace("@@", "\n\n");
+
+    /// <summary>The timber tooltip.</summary>
+    public string WoodCoverageHelp =>
+        ("How much of the land ends up carrying timber.@@" +
+         "Wood is the fussiest of the five: nothing grows in sand and nothing grows above the " +
+         "treeline, so it takes only lowland that is not desert, and it leans towards the " +
+         "weather coming off the sea.@@" +
+         "The figure below counts the lowland, which is the ceiling it cannot pass. Sand and " +
+         "running water come off that, so a world of great deserts will give you less than it " +
+         "says.").Replace("@@", "\n\n");
+
+    /// <summary>The oil tooltip.</summary>
+    public string OilCoverageHelp =>
+        ("How much of the land ends up carrying oil.@@" +
+         "Crude lies where the ground has been low for a very long time, so it takes lowland " +
+         "only -- never a mountain -- and prefers the interior basins to the coast.@@" +
+         "Counted against the lowland, as the timber is.").Replace("@@", "\n\n");
+
+    /// <summary>The sulphur tooltip.</summary>
+    public string SulphurCoverageHelp =>
+        ("How much of the land ends up carrying sulphur.@@" +
+         "Brimstone is the most particular about where it sits: it gathers on the ranges " +
+         "themselves rather than over the upland generally, which is why a world with no " +
+         "mountains has very little of it and it turns up in the same few places when it " +
+         "does.").Replace("@@", "\n\n");
+
+    /// <summary>The stone tooltip.</summary>
+    public string StoneCoverageHelp =>
+        ("How much of the land ends up carrying building stone.@@" +
+         "It wants the same high ground the ore does and is far less fussy about getting it: " +
+         "half of what makes a quarry is the rock and half is somebody wanting to build with " +
+         "it. Expect it in patches anywhere, and more of them in the hills.").Replace("@@", "\n\n");
+
+    /// <summary>The resource patch-size tooltip.</summary>
+    public string ResourcePatchSizeHelp =>
+        ("Roughly how many tiles across one field of a resource runs. Shared: it sets the " +
+         "grain of all five.@@" +
+         "Small values scatter single tiles and pairs across the whole world; large ones give " +
+         "a few broad fields worth going to war over. It does not change how much of anything " +
+         "there is -- only how big one piece of it runs.@@" +
+         "Its own dial rather than the cover panel's, because there is no reason a world of " +
+         "small marshes should also be a world of small ore fields.").Replace("@@", "\n\n");
+
+    /// <summary>The resource clustering tooltip.</summary>
+    public string ResourceClusteringHelp =>
+        ("How much the fields gather together. Shared, like the patch size.@@" +
+         "At nothing they are sprinkled over whatever ground suits them, wherever on the map " +
+         "that is. Turn it up and they heap into districts instead: an ore country and an oil " +
+         "country, with the rest of the world left bare -- which is what makes one stretch of " +
+         "coast worth holding and the next one not.@@" +
+         "It takes no tile off the coverage. The same amount arrives either way, and no field " +
+         "is drawn any bigger; but fields heaped together run into their neighbours, so the " +
+         "pieces you end up looking at are fewer and broader.").Replace("@@", "\n\n");
+
+    /// <inheritdoc cref="ContinentSeedHelp"/>
+    public string ResourceSeedHelp =>
+        ("Any whole number. The same seed with the same settings scatters the same deposits, " +
+         "every time.@@" +
+         "The five are dealt off this one seed but not off one field, or they would all want " +
+         "exactly the same ground and only the first one pressed would get any.").Replace("@@", "\n\n");
 
     /// <summary>The elevation toggle's tooltip.</summary>
     public string ElevationHelp =>
@@ -953,7 +1087,7 @@ public partial class MainWindowViewModel : MapViewModelBase
             map.Width, map.Height, land, CurrentCover(map),
             new ShallowSettings(ShallowsReach, ShallowsVariation / 100, ReadSeedOr(ContinentSeed, 1)));
 
-        Rebuild(map, relief, cover);
+        Rebuild(map, relief, cover, CurrentResources(map));
     }
 
     /// <summary>Whether there is a coast to lay a shelf against.</summary>
@@ -1098,7 +1232,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         // Carried through rather than cleared: raising a range is not a reason to drain the
         // marshes on the other side of the continent. What the range itself rises over does
         // lose its cover, which Rebuild sees to.
-        Rebuild(map, relief, CurrentCover(map));
+        Rebuild(map, relief, CurrentCover(map), CurrentResources(map));
     }
 
     /// <summary>The height of every tile, in reading order.</summary>
@@ -1137,6 +1271,33 @@ public partial class MainWindowViewModel : MapViewModelBase
         }
 
         return cover;
+    }
+
+    /// <summary>
+    /// What every tile is worth, in reading order. Read back off the tiles for the reason the
+    /// heights and the covers are: the tiles are where this lives, and a copy kept beside them
+    /// would be the one that went stale.
+    /// </summary>
+    private static TileResource[] CurrentResources(TileMap map)
+    {
+        var tiles = map.Tiles;
+        var deposits = new TileResource[tiles.Count];
+
+        for (var i = 0; i < deposits.Length; i++)
+        {
+            if (!tiles[i].MapRenderComponents.TryGetValue(RenderComponentLayers.Resource, out var deposit))
+                continue;
+
+            deposits[i] =
+                deposit.ComponentType == MapRenderComponentConstants.Iron ? TileResource.Iron :
+                deposit.ComponentType == MapRenderComponentConstants.Wood ? TileResource.Wood :
+                deposit.ComponentType == MapRenderComponentConstants.Oil ? TileResource.Oil :
+                deposit.ComponentType == MapRenderComponentConstants.Sulphur ? TileResource.Sulphur :
+                deposit.ComponentType == MapRenderComponentConstants.Stone ? TileResource.Stone :
+                TileResource.None;
+        }
+
+        return deposits;
     }
 
     /// <summary>
@@ -1226,7 +1387,9 @@ public partial class MainWindowViewModel : MapViewModelBase
             map.Width, map.Height, relief, CurrentCover(map),
             new CoverSettings(coverage / 100, PatchSize, CoverClustering / 100, seed));
 
-        Rebuild(map, relief, cover);
+        // Deposits come through: a marsh spreading over a wood takes the wood, and Rebuild
+        // sees to that, but the ore two counties away is no business of this pass.
+        Rebuild(map, relief, cover, CurrentResources(map));
     }
 
     /// <summary>Whether there is land to spread over, and a seed to spread it with.</summary>
@@ -1331,7 +1494,7 @@ public partial class MainWindowViewModel : MapViewModelBase
             new RiverSettings((int)RiverCount, RiverWinding / 100, (int)RiverLength, seed),
             out var made);
 
-        Rebuild(map, relief, cover);
+        Rebuild(map, relief, cover, CurrentResources(map));
 
         _riversMade = made;
         OnPropertyChanged(nameof(RiverSummary));
@@ -1345,6 +1508,161 @@ public partial class MainWindowViewModel : MapViewModelBase
     [RelayCommand]
     private void NewRiverSeed() =>
         RiverSeed = NewSeed();
+
+    /// <summary>The line under the iron controls: what the next spread will do, or what is
+    /// stopping it.</summary>
+    public string IronSummary => ResourceSummary(IronCoverage, Acres, "of iron, up in the high ground");
+
+    /// <summary>The line under the timber controls.</summary>
+    public string WoodSummary => ResourceSummary(WoodCoverage, LowlandTiles, "of timber, below the treeline");
+
+    /// <summary>The line under the oil controls.</summary>
+    public string OilSummary => ResourceSummary(OilCoverage, LowlandTiles, "of oil, in the low basins");
+
+    /// <summary>The line under the sulphur controls.</summary>
+    public string SulphurSummary => ResourceSummary(SulphurCoverage, Acres, "of sulphur, on the ranges");
+
+    /// <summary>The line under the stone controls.</summary>
+    public string StoneSummary => ResourceSummary(StoneCoverage, Acres, "of stone, wherever the rock is");
+
+    /// <inheritdoc cref="HasSizeProblem"/>
+    public bool HasResourceProblem => !CanSpreadResources();
+
+    /// <summary>
+    /// What one of the resource passes will actually manage, which is not always what its dial
+    /// says: each resource has its own idea of what ground it can sit on.
+    /// </summary>
+    /// <param name="room">
+    /// How much of the map could hold this resource at all, counted off the heights alone --
+    /// all the land for the three that go anywhere, the lowland for the two that do not. The
+    /// finer exclusions are not counted here: sand will not grow timber and no resource sits
+    /// on a river, so a world of great deserts delivers a little less than this says. Both are
+    /// in the tooltip, and neither is worth a walk over every tile's ground on every keystroke.
+    /// </param>
+    private string ResourceSummary(double coverage, Func<long> room, string what)
+    {
+        if (Tiles is null)
+            return "Make a map in Start first.";
+
+        if (_land is null)
+            return "Build some land first.";
+
+        if (!TryReadSeed(ResourceSeed, out _))
+            return "Seed: any whole number.";
+
+        var ground = room();
+        var tiles = Math.Min((long)(Acres() * coverage / 100), ground);
+
+        return ground == 0
+            ? "No ground of the right kind to put it on."
+            : $"{tiles:N0} tiles {what}.";
+    }
+
+    /// <summary>Scatters iron over the high ground, leaving the other four where they are.</summary>
+    /// <inheritdoc cref="Deposit" path="/summary/para"/>
+    [RelayCommand(CanExecute = nameof(CanSpreadResources))]
+    private void BuildIron() =>
+        Deposit(ResourceBuilder.SpreadIron, IronCoverage);
+
+    /// <summary>Scatters timber over the well-watered lowlands.</summary>
+    /// <inheritdoc cref="Deposit" path="/summary/para"/>
+    [RelayCommand(CanExecute = nameof(CanSpreadResources))]
+    private void BuildWood() =>
+        Deposit(ResourceBuilder.SpreadWood, WoodCoverage);
+
+    /// <summary>Scatters oil through the low basins.</summary>
+    /// <inheritdoc cref="Deposit" path="/summary/para"/>
+    [RelayCommand(CanExecute = nameof(CanSpreadResources))]
+    private void BuildOil() =>
+        Deposit(ResourceBuilder.SpreadOil, OilCoverage);
+
+    /// <summary>Scatters sulphur over the ranges.</summary>
+    /// <inheritdoc cref="Deposit" path="/summary/para"/>
+    [RelayCommand(CanExecute = nameof(CanSpreadResources))]
+    private void BuildSulphur() =>
+        Deposit(ResourceBuilder.SpreadSulphur, SulphurCoverage);
+
+    /// <summary>Scatters building stone wherever the rock is.</summary>
+    /// <inheritdoc cref="Deposit" path="/summary/para"/>
+    [RelayCommand(CanExecute = nameof(CanSpreadResources))]
+    private void BuildStone() =>
+        Deposit(ResourceBuilder.SpreadStone, StoneCoverage);
+
+    /// <summary>
+    /// Spreads all five, in the order they appear on the panel.
+    /// <para>
+    /// One pass over the map and one undo step rather than five of each, which is the whole
+    /// point of it: five presses put four maps into the undo history that nobody wanted to
+    /// keep. The order still decides who gets the ground two of them want, and it is the
+    /// order shown -- iron first, stone last.
+    /// </para>
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanSpreadResources))]
+    private void BuildAllResources()
+    {
+        if (_map is not { } map || _land is null || !TryReadSeed(ResourceSeed, out var seed))
+            return;
+
+        Remember();
+
+        var relief = CurrentRelief(map);
+        var cover = CurrentCover(map);
+        var deposits = CurrentResources(map);
+
+        foreach (var (pass, coverage) in Passes())
+        {
+            deposits = pass(
+                map.Width, map.Height, relief, cover, deposits,
+                new DepositSettings(coverage / 100, ResourcePatchSize, ResourceClustering / 100, seed));
+        }
+
+        Rebuild(map, relief, cover, deposits);
+
+        IEnumerable<(Func<int, int, int[], GroundCover[], TileResource[], DepositSettings, TileResource[]>, double)> Passes()
+        {
+            yield return (ResourceBuilder.SpreadIron, IronCoverage);
+            yield return (ResourceBuilder.SpreadWood, WoodCoverage);
+            yield return (ResourceBuilder.SpreadOil, OilCoverage);
+            yield return (ResourceBuilder.SpreadSulphur, SulphurCoverage);
+            yield return (ResourceBuilder.SpreadStone, StoneCoverage);
+        }
+    }
+
+    /// <summary>
+    /// Runs one of the resource passes and puts the result on screen.
+    /// <para>
+    /// Deposits only. Nothing here moves a coast, a height or a cover -- a resource is what a
+    /// tile has, not what it is -- so the land, the relief and the ground all come through
+    /// untouched.
+    /// </para>
+    /// </summary>
+    private void Deposit(
+        Func<int, int, int[], GroundCover[], TileResource[], DepositSettings, TileResource[]> pass,
+        double coverage)
+    {
+        if (_map is not { } map || _land is null || !TryReadSeed(ResourceSeed, out var seed))
+            return;
+
+        Remember();
+
+        var relief = CurrentRelief(map);
+        var cover = CurrentCover(map);
+
+        var deposits = pass(
+            map.Width, map.Height, relief, cover, CurrentResources(map),
+            new DepositSettings(coverage / 100, ResourcePatchSize, ResourceClustering / 100, seed));
+
+        Rebuild(map, relief, cover, deposits);
+    }
+
+    /// <summary>Whether there is land to scatter over, and a seed to scatter it with.</summary>
+    private bool CanSpreadResources() =>
+        _map is not null && _land is not null && TryReadSeed(ResourceSeed, out _);
+
+    /// <summary>Fills the resource seed box with a new one.</summary>
+    [RelayCommand]
+    private void NewResourceSeed() =>
+        ResourceSeed = NewSeed();
 
     /// <summary>
     /// Writes the map and the current settings to <paramref name="stream"/>.
@@ -1389,6 +1707,14 @@ public partial class MainWindowViewModel : MapViewModelBase
                 RiverWinding = RiverWinding,
                 RiverLength = RiverLength,
                 RiverSeed = RiverSeed,
+                IronCoverage = IronCoverage,
+                WoodCoverage = WoodCoverage,
+                OilCoverage = OilCoverage,
+                SulphurCoverage = SulphurCoverage,
+                StoneCoverage = StoneCoverage,
+                ResourcePatchSize = ResourcePatchSize,
+                ResourceClustering = ResourceClustering,
+                ResourceSeed = ResourceSeed,
                 TileSize = Options.TileSize,
                 OriginX = Options.OriginX,
                 OriginY = Options.OriginY,
@@ -1479,6 +1805,15 @@ public partial class MainWindowViewModel : MapViewModelBase
         RiverLength = settings.RiverLength ?? RiverLength;
         RiverSeed = settings.RiverSeed ?? RiverSeed;
         CoverSeed = settings.CoverSeed ?? CoverSeed;
+
+        IronCoverage = settings.IronCoverage ?? IronCoverage;
+        WoodCoverage = settings.WoodCoverage ?? WoodCoverage;
+        OilCoverage = settings.OilCoverage ?? OilCoverage;
+        SulphurCoverage = settings.SulphurCoverage ?? SulphurCoverage;
+        StoneCoverage = settings.StoneCoverage ?? StoneCoverage;
+        ResourcePatchSize = settings.ResourcePatchSize ?? ResourcePatchSize;
+        ResourceClustering = settings.ResourceClustering ?? ResourceClustering;
+        ResourceSeed = settings.ResourceSeed ?? ResourceSeed;
 
         // The size boxes describe the next map to be made, and the one just opened is the
         // best guess at what that should be.
@@ -1597,18 +1932,25 @@ public partial class MainWindowViewModel : MapViewModelBase
         // Grass everywhere, because this is where the world starts over: a land pass draws a
         // new coastline, and a swamp that survived it would be a swamp somewhere nobody put
         // one. The relief goes the same way, for the same reason.
-        Rebuild(map, relief, new GroundCover[land.Length]);
+        Rebuild(map, relief, new GroundCover[land.Length], new TileResource[land.Length]);
     }
 
     /// <summary>
-    /// Rebuilds the map from an elevation and a ground cover per tile: deep water wherever
-    /// the elevation says nothing, and the cover it is given wherever it says anything.
+    /// Rebuilds the map from an elevation, a ground cover and a resource per tile: deep water
+    /// wherever the elevation says nothing, and the ground it is given wherever it says
+    /// anything.
     /// <para>
     /// The one place a map is made, so that drawing a coastline, raising a mountain range and
     /// flooding a marsh are the same operation handed different numbers.
     /// </para>
     /// </summary>
-    private void Rebuild(TileMap map, int[] relief, GroundCover[] cover)
+    /// <param name="deposits">
+    /// What each tile is worth. Passed in rather than carried over from <paramref name="map"/>
+    /// so that every caller has to decide: a pass that only changes how the ground is drawn
+    /// hands back what it was given, and a pass that draws a new coastline hands back nothing,
+    /// because the world its deposits were placed in has gone.
+    /// </param>
+    private void Rebuild(TileMap map, int[] relief, GroundCover[] cover, TileResource[] deposits)
     {
         _map = new TileMap(map.Width, map.Height, map.OriginX, map.OriginY, coordinate =>
         {
@@ -1631,7 +1973,17 @@ public partial class MainWindowViewModel : MapViewModelBase
             // then the range should take it, exactly as it takes a marsh.
             var ground = Elevations.IsLowland(elevation) ? cover[index] : GroundCover.Grass;
 
-            return BuildLandTile(coordinate, elevation, ground);
+            // And the same for what the tile is worth, against the ground it has just been
+            // given rather than the one it had: a wood the sea has taken, or that a range has
+            // risen through, is not a wood any more. ResourceBuilder owns the rule so that the
+            // pass that lays a deposit and the rebuild that carries one over cannot disagree
+            // about where it may sit.
+            var deposit = deposits[index];
+
+            if (!ResourceBuilder.CanHold(deposit, elevation, ground))
+                deposit = TileResource.None;
+
+            return BuildLandTile(coordinate, elevation, ground, deposit);
         });
 
         // Built labelled or not as the panel asks, which is a pass over the tiles this one
@@ -1710,6 +2062,12 @@ public partial class MainWindowViewModel : MapViewModelBase
         BuildSwampsCommand.NotifyCanExecuteChanged();
         BuildDesertsCommand.NotifyCanExecuteChanged();
         BuildShallowsCommand.NotifyCanExecuteChanged();
+        BuildIronCommand.NotifyCanExecuteChanged();
+        BuildWoodCommand.NotifyCanExecuteChanged();
+        BuildOilCommand.NotifyCanExecuteChanged();
+        BuildSulphurCommand.NotifyCanExecuteChanged();
+        BuildStoneCommand.NotifyCanExecuteChanged();
+        BuildAllResourcesCommand.NotifyCanExecuteChanged();
         UndoCommand.NotifyCanExecuteChanged();
 
         OnPropertyChanged(nameof(LandSummary));
@@ -1726,6 +2084,12 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(HasSwampProblem));
         OnPropertyChanged(nameof(DesertSummary));
         OnPropertyChanged(nameof(HasDesertProblem));
+        OnPropertyChanged(nameof(IronSummary));
+        OnPropertyChanged(nameof(WoodSummary));
+        OnPropertyChanged(nameof(OilSummary));
+        OnPropertyChanged(nameof(SulphurSummary));
+        OnPropertyChanged(nameof(StoneSummary));
+        OnPropertyChanged(nameof(HasResourceProblem));
     }
 
     /// <summary>
@@ -1896,7 +2260,10 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// puts anything higher here.
     /// </summary>
     private MapTile BuildLandTile(
-        TileCoordinate coordinate, int elevation = Elevations.Flat, GroundCover cover = GroundCover.Grass)
+        TileCoordinate coordinate,
+        int elevation = Elevations.Flat,
+        GroundCover cover = GroundCover.Grass,
+        TileResource resource = TileResource.None)
     {
         var tile = new MapTile { X = coordinate.X, Y = coordinate.Y, Elevation = elevation };
 
@@ -1912,6 +2279,21 @@ public partial class MainWindowViewModel : MapViewModelBase
 
             _ => MapRenderComponentConstants.Grass,
         });
+
+        // On its own layer over the ground, which is what lets it be drawn without the tile
+        // having to stop being marsh or sand to carry it.
+        if (resource != TileResource.None)
+        {
+            tile.SetResourceType(resource switch
+            {
+                TileResource.Iron => MapRenderComponentConstants.Iron,
+                TileResource.Wood => MapRenderComponentConstants.Wood,
+                TileResource.Oil => MapRenderComponentConstants.Oil,
+                TileResource.Sulphur => MapRenderComponentConstants.Sulphur,
+                _ => MapRenderComponentConstants.Stone,
+            });
+        }
+
         Label(tile);
 
         return tile;

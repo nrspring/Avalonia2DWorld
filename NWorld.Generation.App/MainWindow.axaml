@@ -269,511 +269,699 @@
                      MiniMapCommand="{Binding MiniMapCommand}"
                      PanCommand="{Binding PanCommand}" />
 
-        <!-- The accordion. One card per panel, stacked; further panels go in here beside
-             Start and need nothing else. Fixed width rather than a share of the window, so
-             the fields keep their proportions however wide the map gets. -->
-        <controls:AccordionPanel HorizontalAlignment="Left"
-                                 VerticalAlignment="Top"
-                                 Margin="16"
-                                 Width="252"
-                                 Spacing="8">
+        <!-- The stack is taller than a short window, and an open panel used to run off the
+             bottom with no way to reach the rest of it. Stretched rather than top-aligned so
+             the scroller is exactly as tall as the window allows, and the cards scroll inside
+             it.
 
-            <Border Classes="card">
-                <Expander ToolTip.Tip="{Binding SaveHelp}">
-                    <Expander.Header>
-                        <TextBlock Classes="panelTitle" Text="File" />
-                    </Expander.Header>
+             No background, deliberately. Without one the strip is not hit-testable, so the
+             empty space beside and below the cards goes on belonging to the map, and a wheel
+             there zooms as it did before there was a scroller. Over a card, which does have a
+             fill, the wheel scrolls the stack instead, which is what a pointer over a menu
+             should do. -->
+        <ScrollViewer HorizontalAlignment="Left"
+                      VerticalAlignment="Stretch"
+                      Margin="16"
+                      Width="252"
+                      Background="{x:Null}"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
 
-                    <StackPanel Spacing="10">
-                        <Grid ColumnDefinitions="*,8,*">
-                            <Border Grid.Column="0" ToolTip.Tip="{Binding LoadHelp}" Background="Transparent">
-                                <Button Classes="quiet"
-                                        Content="Open"
-                                        HorizontalAlignment="Stretch"
-                                        HorizontalContentAlignment="Center"
-                                        Click="OnLoadClick" />
+            <!-- The accordion. One card per panel, stacked; further panels go in here beside
+                 Start and need nothing else. Fixed width rather than a share of the window, so
+                 the fields keep their proportions however wide the map gets. -->
+            <controls:AccordionPanel Spacing="8">
+
+                <Border Classes="card">
+                    <Expander ToolTip.Tip="{Binding SaveHelp}">
+                        <Expander.Header>
+                            <TextBlock Classes="panelTitle" Text="File" />
+                        </Expander.Header>
+
+                        <StackPanel Spacing="10">
+                            <Grid ColumnDefinitions="*,8,*">
+                                <Border Grid.Column="0" ToolTip.Tip="{Binding LoadHelp}" Background="Transparent">
+                                    <Button Classes="quiet"
+                                            Content="Open"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Center"
+                                            Click="OnLoadClick" />
+                                </Border>
+
+                                <Border Grid.Column="2" ToolTip.Tip="{Binding SaveHelp}" Background="Transparent">
+                                    <Button Classes="quiet"
+                                            Content="Save"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Center"
+                                            IsEnabled="{Binding HasMap}"
+                                            Click="OnSaveClick" />
+                                </Border>
+                            </Grid>
+
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasFileProblem}"
+                                       Text="{Binding FileStatus}" />
+                        </StackPanel>
+                    </Expander>
+                </Border>
+
+                <Border Classes="card">
+                    <Expander IsExpanded="True" ToolTip.Tip="{Binding StartHelp}">
+                        <Expander.Header>
+                            <TextBlock Classes="panelTitle" Text="Start" />
+                        </Expander.Header>
+
+                        <StackPanel Spacing="10">
+
+                            <Grid ColumnDefinitions="*,8,*">
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Classes="field" Text="WIDTH"
+                                               ToolTip.Tip="{Binding WidthHelp}" />
+                                    <TextBox Text="{Binding NewMapWidth}" Watermark="600"
+                                             ToolTip.Tip="{Binding WidthHelp}" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Classes="field" Text="HEIGHT"
+                                               ToolTip.Tip="{Binding HeightHelp}" />
+                                    <TextBox Text="{Binding NewMapHeight}" Watermark="400"
+                                             ToolTip.Tip="{Binding HeightHelp}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- What Create is about to make, or why it will not press. The
+                                 button disables itself on the same test this line describes. -->
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasSizeProblem}"
+                                       Text="{Binding SizeSummary}"
+                                       ToolTip.Tip="{Binding CreateHelp}" />
+
+                            <!-- A disabled Button takes no pointer input, so a tooltip on the
+                                 button itself would be the one nobody can reach at the moment
+                                 they want it. The wrapper stays enabled and carries it. -->
+                            <Border ToolTip.Tip="{Binding CreateHelp}" Background="Transparent">
+                                <Button Classes="primary"
+                                        Content="Create"
+                                        IsDefault="True"
+                                        Command="{Binding CreateMapCommand}" />
                             </Border>
 
-                            <Border Grid.Column="2" ToolTip.Tip="{Binding SaveHelp}" Background="Transparent">
+                        </StackPanel>
+                    </Expander>
+                </Border>
+
+                <Border Classes="card">
+                    <Expander ToolTip.Tip="{Binding BaseLandHelp}">
+                        <Expander.Header>
+                            <TextBlock Classes="panelTitle" Text="Base Land" />
+                        </Expander.Header>
+
+                        <StackPanel Spacing="10">
+
+                            <TextBlock Classes="field" Text="CONTINENTS" />
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding ContinentCountHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Count" />
+                                <Slider Grid.Column="1" Minimum="1" Maximum="8"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding ContinentCount}" />
+                                <TextBlock Grid.Column="2" Classes="reading" Text="{Binding ContinentCount}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding LandCoverageHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Land" />
+                                <Slider Grid.Column="1" Minimum="5" Maximum="80"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding LandCoverage}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding LandCoverage, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding CoastRoughnessHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Coast" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding CoastRoughness}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding CoastRoughness, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding ContinentSeedHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
+                                <TextBox Grid.Column="1" Text="{Binding ContinentSeed}" Watermark="1" />
+                                <Button Grid.Column="3" Classes="quiet" Content="New"
+                                        Command="{Binding NewContinentSeedCommand}"
+                                        ToolTip.Tip="{Binding ContinentSeedHelp}" />
+                            </Grid>
+
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasLandProblem}"
+                                       Text="{Binding LandSummary}"
+                                       ToolTip.Tip="{Binding BuildContinentsHelp}" />
+
+                            <Border ToolTip.Tip="{Binding BuildContinentsHelp}" Background="Transparent">
+                                <Button Classes="primary"
+                                        Content="Build Continents"
+                                        Command="{Binding BuildContinentsCommand}" />
+                            </Border>
+
+                            <Border Classes="rule" />
+
+                            <TextBlock Classes="field" Text="ISLANDS" />
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding IslandCountHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Count" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="200"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding IslandCount}" />
+                                <TextBlock Grid.Column="2" Classes="reading" Text="{Binding IslandCount}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding IslandSizeHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Size" />
+                                <Slider Grid.Column="1" Minimum="2" Maximum="30"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding IslandSize}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding IslandSize, StringFormat=\{0:0\}t}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding IslandCoastHugHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Shore" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding IslandCoastHug}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding IslandCoastHug, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding IslandSeedHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
+                                <TextBox Grid.Column="1" Text="{Binding IslandSeed}" Watermark="1" />
+                                <Button Grid.Column="3" Classes="quiet" Content="New"
+                                        Command="{Binding NewIslandSeedCommand}"
+                                        ToolTip.Tip="{Binding IslandSeedHelp}" />
+                            </Grid>
+
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasIslandProblem}"
+                                       Text="{Binding IslandSummary}"
+                                       ToolTip.Tip="{Binding BuildIslandsHelp}" />
+
+                            <Border ToolTip.Tip="{Binding BuildIslandsHelp}" Background="Transparent">
+                                <Button Classes="primary"
+                                        Content="Build Islands"
+                                        Command="{Binding BuildIslandsCommand}" />
+                            </Border>
+
+                            <Border Classes="rule" />
+
+                            <!-- Last in the panel because it reads the coast rather than drawing
+                                 one: whatever the two above have settled on is what it measures
+                                 from. -->
+                            <TextBlock Classes="field" Text="SHALLOWS" />
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding ShallowsReachHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Reach" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="30"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding ShallowsReach}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding ShallowsReach, StringFormat=\{0:0\}t}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding ShallowsVariationHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Vary" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding ShallowsVariation}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding ShallowsVariation, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasShallowsProblem}"
+                                       Text="{Binding ShallowsSummary}"
+                                       ToolTip.Tip="{Binding BuildShallowsHelp}" />
+
+                            <Border ToolTip.Tip="{Binding BuildShallowsHelp}" Background="Transparent">
+                                <Button Classes="primary"
+                                        Content="Mark Shallows"
+                                        Command="{Binding BuildShallowsCommand}" />
+                            </Border>
+
+                        </StackPanel>
+                    </Expander>
+                </Border>
+
+                <Border Classes="card">
+                    <Expander ToolTip.Tip="{Binding TerrainHelp}">
+                        <Expander.Header>
+                            <TextBlock Classes="panelTitle" Text="Hills and Mountains" />
+                        </Expander.Header>
+
+                        <StackPanel Spacing="10">
+
+                            <TextBlock Classes="field" Text="HILLS" />
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding HillCoverageHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="80"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding HillCoverage}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding HillCoverage, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding HillSpreadHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Spread" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="40"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding HillSpread}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding HillSpread, StringFormat=\{0:0\}t}" />
+                            </Grid>
+
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasHillProblem}"
+                                       Text="{Binding HillSummary}"
+                                       ToolTip.Tip="{Binding RaiseHillsHelp}" />
+
+                            <Border ToolTip.Tip="{Binding RaiseHillsHelp}" Background="Transparent">
+                                <Button Classes="primary"
+                                        Content="Raise Hills"
+                                        Command="{Binding BuildHillsCommand}" />
+                            </Border>
+
+                            <Border Classes="rule" />
+
+                            <TextBlock Classes="field" Text="MOUNTAINS" />
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding MountainCoverageHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="60"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding MountainCoverage}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding MountainCoverage, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RuggednessHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Rugged" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding Ruggedness}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding Ruggedness, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RangeSizeHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Range" />
+                                <Slider Grid.Column="1" Minimum="4" Maximum="80"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding RangeSize}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding RangeSize, StringFormat=\{0:0\}t}" />
+                            </Grid>
+
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasMountainProblem}"
+                                       Text="{Binding MountainSummary}"
+                                       ToolTip.Tip="{Binding RaiseMountainsHelp}" />
+
+                            <Border ToolTip.Tip="{Binding RaiseMountainsHelp}" Background="Transparent">
+                                <Button Classes="primary"
+                                        Content="Raise Mountains"
+                                        Command="{Binding BuildMountainsCommand}" />
+                            </Border>
+
+                            <Border Classes="rule" />
+
+                            <!-- The one thing the two do share, and only because a seed is what
+                                 says which world this is. -->
+                            <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding TerrainSeedHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
+                                <TextBox Grid.Column="1" Text="{Binding TerrainSeed}" Watermark="1" />
+                                <Button Grid.Column="3" Classes="quiet" Content="New"
+                                        Command="{Binding NewTerrainSeedCommand}"
+                                        ToolTip.Tip="{Binding TerrainSeedHelp}" />
+                            </Grid>
+
+                        </StackPanel>
+                    </Expander>
+                </Border>
+
+                <Border Classes="card">
+                    <Expander ToolTip.Tip="{Binding CoverHelp}">
+                        <Expander.Header>
+                            <TextBlock Classes="panelTitle" Text="Swamps and Deserts" />
+                        </Expander.Header>
+
+                        <StackPanel Spacing="10">
+
+                            <!-- The grain of both, so it sits above them both. -->
+                            <TextBlock Classes="field" Text="SHAPE" />
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding PatchSizeHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Patch" />
+                                <Slider Grid.Column="1" Minimum="3" Maximum="60"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding PatchSize}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding PatchSize, StringFormat=\{0:0\}t}" />
+                            </Grid>
+
+                            <!-- How big a patch is, and then whether the patches keep company.
+                                 Two questions, so two dials. -->
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding ClusteringHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Cluster" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding CoverClustering}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding CoverClustering, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding CoverSeedHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
+                                <TextBox Grid.Column="1" Text="{Binding CoverSeed}" Watermark="1" />
+                                <Button Grid.Column="3" Classes="quiet" Content="New"
+                                        Command="{Binding NewCoverSeedCommand}"
+                                        ToolTip.Tip="{Binding CoverSeedHelp}" />
+                            </Grid>
+
+                            <Border Classes="rule" />
+
+                            <TextBlock Classes="field" Text="SWAMPS" />
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding SwampCoverageHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="60"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding SwampCoverage}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding SwampCoverage, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasSwampProblem}"
+                                       Text="{Binding SwampSummary}"
+                                       ToolTip.Tip="{Binding SwampCoverageHelp}" />
+
+                            <Border ToolTip.Tip="{Binding SwampCoverageHelp}" Background="Transparent">
+                                <Button Classes="primary"
+                                        Content="Spread Swamps"
+                                        Command="{Binding BuildSwampsCommand}" />
+                            </Border>
+
+                            <Border Classes="rule" />
+
+                            <TextBlock Classes="field" Text="DESERTS" />
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding DesertCoverageHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="60"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding DesertCoverage}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding DesertCoverage, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasDesertProblem}"
+                                       Text="{Binding DesertSummary}"
+                                       ToolTip.Tip="{Binding DesertCoverageHelp}" />
+
+                            <Border ToolTip.Tip="{Binding DesertCoverageHelp}" Background="Transparent">
+                                <Button Classes="primary"
+                                        Content="Spread Deserts"
+                                        Command="{Binding BuildDesertsCommand}" />
+                            </Border>
+
+                        </StackPanel>
+                    </Expander>
+                </Border>
+
+                <Border Classes="card">
+                    <Expander ToolTip.Tip="{Binding RiverHelp}">
+                        <Expander.Header>
+                            <TextBlock Classes="panelTitle" Text="Rivers" />
+                        </Expander.Header>
+
+                        <StackPanel Spacing="10">
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RiverCountHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Rivers" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="24"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding RiverCount}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding RiverCount, StringFormat=\{0:0\}}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RiverWindingHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Winding" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding RiverWinding}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding RiverWinding, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RiverLengthHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Length" />
+                                <Slider Grid.Column="1" Minimum="5" Maximum="250"
+                                        TickFrequency="5" IsSnapToTickEnabled="True"
+                                        Value="{Binding RiverLength}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding RiverLength, StringFormat=\{0:0\}t}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding RiverSeedHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
+                                <TextBox Grid.Column="1" Text="{Binding RiverSeed}" Watermark="1" />
+                                <Button Grid.Column="3" Classes="quiet" Content="New"
+                                        Command="{Binding NewRiverSeedCommand}"
+                                        ToolTip.Tip="{Binding RiverSeedHelp}" />
+                            </Grid>
+
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasRiverProblem}"
+                                       Text="{Binding RiverSummary}"
+                                       ToolTip.Tip="{Binding RiverHelp}" />
+
+                            <Border ToolTip.Tip="{Binding RiverHelp}" Background="Transparent">
+                                <Button Classes="primary"
+                                        Content="Add Rivers"
+                                        Command="{Binding BuildRiversCommand}" />
+                            </Border>
+
+                        </StackPanel>
+                    </Expander>
+                </Border>
+
+                <Border Classes="card">
+                    <Expander ToolTip.Tip="{Binding ResourceHelp}">
+                        <Expander.Header>
+                            <TextBlock Classes="panelTitle" Text="Resources" />
+                        </Expander.Header>
+
+                        <StackPanel Spacing="10">
+
+                            <!-- The grain of all five, so it sits above them all. -->
+                            <TextBlock Classes="field" Text="SHAPE" />
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding ResourcePatchSizeHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Field" />
+                                <Slider Grid.Column="1" Minimum="2" Maximum="40"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding ResourcePatchSize}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding ResourcePatchSize, StringFormat=\{0:0\}t}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding ResourceClusteringHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Cluster" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding ResourceClustering}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding ResourceClustering, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding ResourceSeedHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
+                                <TextBox Grid.Column="1" Text="{Binding ResourceSeed}" Watermark="1" />
+                                <Button Grid.Column="3" Classes="quiet" Content="New"
+                                        Command="{Binding NewResourceSeedCommand}"
+                                        ToolTip.Tip="{Binding ResourceSeedHelp}" />
+                            </Grid>
+
+                            <Border Classes="rule" />
+
+                            <TextBlock Classes="field" Text="IRON" />
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding IronCoverageHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="40"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding IronCoverage}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding IronCoverage, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasResourceProblem}"
+                                       Text="{Binding IronSummary}"
+                                       ToolTip.Tip="{Binding IronCoverageHelp}" />
+
+                            <Border ToolTip.Tip="{Binding IronCoverageHelp}" Background="Transparent">
+                                <Button Classes="primary"
+                                        Content="Scatter Iron"
+                                        Command="{Binding BuildIronCommand}" />
+                            </Border>
+
+                            <Border Classes="rule" />
+
+                            <TextBlock Classes="field" Text="WOOD" />
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding WoodCoverageHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="40"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding WoodCoverage}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding WoodCoverage, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasResourceProblem}"
+                                       Text="{Binding WoodSummary}"
+                                       ToolTip.Tip="{Binding WoodCoverageHelp}" />
+
+                            <Border ToolTip.Tip="{Binding WoodCoverageHelp}" Background="Transparent">
+                                <Button Classes="primary"
+                                        Content="Scatter Wood"
+                                        Command="{Binding BuildWoodCommand}" />
+                            </Border>
+
+                            <Border Classes="rule" />
+
+                            <TextBlock Classes="field" Text="OIL" />
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding OilCoverageHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="40"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding OilCoverage}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding OilCoverage, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasResourceProblem}"
+                                       Text="{Binding OilSummary}"
+                                       ToolTip.Tip="{Binding OilCoverageHelp}" />
+
+                            <Border ToolTip.Tip="{Binding OilCoverageHelp}" Background="Transparent">
+                                <Button Classes="primary"
+                                        Content="Scatter Oil"
+                                        Command="{Binding BuildOilCommand}" />
+                            </Border>
+
+                            <Border Classes="rule" />
+
+                            <TextBlock Classes="field" Text="SULPHUR" />
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding SulphurCoverageHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="40"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding SulphurCoverage}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding SulphurCoverage, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasResourceProblem}"
+                                       Text="{Binding SulphurSummary}"
+                                       ToolTip.Tip="{Binding SulphurCoverageHelp}" />
+
+                            <Border ToolTip.Tip="{Binding SulphurCoverageHelp}" Background="Transparent">
+                                <Button Classes="primary"
+                                        Content="Scatter Sulphur"
+                                        Command="{Binding BuildSulphurCommand}" />
+                            </Border>
+
+                            <Border Classes="rule" />
+
+                            <TextBlock Classes="field" Text="STONE" />
+
+                            <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding StoneCoverageHelp}">
+                                <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
+                                <Slider Grid.Column="1" Minimum="0" Maximum="40"
+                                        TickFrequency="1" IsSnapToTickEnabled="True"
+                                        Value="{Binding StoneCoverage}" />
+                                <TextBlock Grid.Column="2" Classes="reading"
+                                           Text="{Binding StoneCoverage, StringFormat=\{0:0\}%}" />
+                            </Grid>
+
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasResourceProblem}"
+                                       Text="{Binding StoneSummary}"
+                                       ToolTip.Tip="{Binding StoneCoverageHelp}" />
+
+                            <Border ToolTip.Tip="{Binding StoneCoverageHelp}" Background="Transparent">
+                                <Button Classes="primary"
+                                        Content="Scatter Stone"
+                                        Command="{Binding BuildStoneCommand}" />
+                            </Border>
+
+                            <Border Classes="rule" />
+
+                            <!-- All five in the order above, in one pass and one undo step. -->
+                            <Border ToolTip.Tip="{Binding ResourceHelp}" Background="Transparent">
                                 <Button Classes="quiet"
-                                        Content="Save"
+                                        Content="Scatter All"
                                         HorizontalAlignment="Stretch"
                                         HorizontalContentAlignment="Center"
-                                        IsEnabled="{Binding HasMap}"
-                                        Click="OnSaveClick" />
+                                        Command="{Binding BuildAllResourcesCommand}" />
                             </Border>
-                        </Grid>
 
-                        <TextBlock Classes="note"
-                                   Classes.warn="{Binding HasFileProblem}"
-                                   Text="{Binding FileStatus}" />
-                    </StackPanel>
-                </Expander>
-            </Border>
-
-            <Border Classes="card">
-                <Expander IsExpanded="True" ToolTip.Tip="{Binding StartHelp}">
-                    <Expander.Header>
-                        <TextBlock Classes="panelTitle" Text="Start" />
-                    </Expander.Header>
-
-                    <StackPanel Spacing="10">
-
-                        <Grid ColumnDefinitions="*,8,*">
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Classes="field" Text="WIDTH"
-                                           ToolTip.Tip="{Binding WidthHelp}" />
-                                <TextBox Text="{Binding NewMapWidth}" Watermark="600"
-                                         ToolTip.Tip="{Binding WidthHelp}" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Classes="field" Text="HEIGHT"
-                                           ToolTip.Tip="{Binding HeightHelp}" />
-                                <TextBox Text="{Binding NewMapHeight}" Watermark="400"
-                                         ToolTip.Tip="{Binding HeightHelp}" />
-                            </StackPanel>
-                        </Grid>
-
-                        <!-- What Create is about to make, or why it will not press. The
-                             button disables itself on the same test this line describes. -->
-                        <TextBlock Classes="note"
-                                   Classes.warn="{Binding HasSizeProblem}"
-                                   Text="{Binding SizeSummary}"
-                                   ToolTip.Tip="{Binding CreateHelp}" />
-
-                        <!-- A disabled Button takes no pointer input, so a tooltip on the
-                             button itself would be the one nobody can reach at the moment
-                             they want it. The wrapper stays enabled and carries it. -->
-                        <Border ToolTip.Tip="{Binding CreateHelp}" Background="Transparent">
-                            <Button Classes="primary"
-                                    Content="Create"
-                                    IsDefault="True"
-                                    Command="{Binding CreateMapCommand}" />
-                        </Border>
-
-                    </StackPanel>
-                </Expander>
-            </Border>
-
-            <Border Classes="card">
-                <Expander ToolTip.Tip="{Binding BaseLandHelp}">
-                    <Expander.Header>
-                        <TextBlock Classes="panelTitle" Text="Base Land" />
-                    </Expander.Header>
-
-                    <StackPanel Spacing="10">
-
-                        <TextBlock Classes="field" Text="CONTINENTS" />
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding ContinentCountHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Count" />
-                            <Slider Grid.Column="1" Minimum="1" Maximum="8"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding ContinentCount}" />
-                            <TextBlock Grid.Column="2" Classes="reading" Text="{Binding ContinentCount}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding LandCoverageHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Land" />
-                            <Slider Grid.Column="1" Minimum="5" Maximum="80"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding LandCoverage}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding LandCoverage, StringFormat=\{0:0\}%}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding CoastRoughnessHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Coast" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="100"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding CoastRoughness}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding CoastRoughness, StringFormat=\{0:0\}%}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding ContinentSeedHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
-                            <TextBox Grid.Column="1" Text="{Binding ContinentSeed}" Watermark="1" />
-                            <Button Grid.Column="3" Classes="quiet" Content="New"
-                                    Command="{Binding NewContinentSeedCommand}"
-                                    ToolTip.Tip="{Binding ContinentSeedHelp}" />
-                        </Grid>
-
-                        <TextBlock Classes="note"
-                                   Classes.warn="{Binding HasLandProblem}"
-                                   Text="{Binding LandSummary}"
-                                   ToolTip.Tip="{Binding BuildContinentsHelp}" />
-
-                        <Border ToolTip.Tip="{Binding BuildContinentsHelp}" Background="Transparent">
-                            <Button Classes="primary"
-                                    Content="Build Continents"
-                                    Command="{Binding BuildContinentsCommand}" />
-                        </Border>
-
-                        <Border Classes="rule" />
-
-                        <TextBlock Classes="field" Text="ISLANDS" />
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding IslandCountHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Count" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="200"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding IslandCount}" />
-                            <TextBlock Grid.Column="2" Classes="reading" Text="{Binding IslandCount}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding IslandSizeHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Size" />
-                            <Slider Grid.Column="1" Minimum="2" Maximum="30"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding IslandSize}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding IslandSize, StringFormat=\{0:0\}t}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding IslandCoastHugHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Shore" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="100"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding IslandCoastHug}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding IslandCoastHug, StringFormat=\{0:0\}%}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding IslandSeedHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
-                            <TextBox Grid.Column="1" Text="{Binding IslandSeed}" Watermark="1" />
-                            <Button Grid.Column="3" Classes="quiet" Content="New"
-                                    Command="{Binding NewIslandSeedCommand}"
-                                    ToolTip.Tip="{Binding IslandSeedHelp}" />
-                        </Grid>
-
-                        <TextBlock Classes="note"
-                                   Classes.warn="{Binding HasIslandProblem}"
-                                   Text="{Binding IslandSummary}"
-                                   ToolTip.Tip="{Binding BuildIslandsHelp}" />
-
-                        <Border ToolTip.Tip="{Binding BuildIslandsHelp}" Background="Transparent">
-                            <Button Classes="primary"
-                                    Content="Build Islands"
-                                    Command="{Binding BuildIslandsCommand}" />
-                        </Border>
-
-                        <Border Classes="rule" />
-
-                        <!-- Last in the panel because it reads the coast rather than drawing
-                             one: whatever the two above have settled on is what it measures
-                             from. -->
-                        <TextBlock Classes="field" Text="SHALLOWS" />
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding ShallowsReachHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Reach" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="30"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding ShallowsReach}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding ShallowsReach, StringFormat=\{0:0\}t}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding ShallowsVariationHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Vary" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="100"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding ShallowsVariation}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding ShallowsVariation, StringFormat=\{0:0\}%}" />
-                        </Grid>
-
-                        <TextBlock Classes="note"
-                                   Classes.warn="{Binding HasShallowsProblem}"
-                                   Text="{Binding ShallowsSummary}"
-                                   ToolTip.Tip="{Binding BuildShallowsHelp}" />
-
-                        <Border ToolTip.Tip="{Binding BuildShallowsHelp}" Background="Transparent">
-                            <Button Classes="primary"
-                                    Content="Mark Shallows"
-                                    Command="{Binding BuildShallowsCommand}" />
-                        </Border>
-
-                    </StackPanel>
-                </Expander>
-            </Border>
-
-            <Border Classes="card">
-                <Expander ToolTip.Tip="{Binding TerrainHelp}">
-                    <Expander.Header>
-                        <TextBlock Classes="panelTitle" Text="Hills and Mountains" />
-                    </Expander.Header>
-
-                    <StackPanel Spacing="10">
-
-                        <TextBlock Classes="field" Text="HILLS" />
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding HillCoverageHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="80"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding HillCoverage}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding HillCoverage, StringFormat=\{0:0\}%}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding HillSpreadHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Spread" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="40"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding HillSpread}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding HillSpread, StringFormat=\{0:0\}t}" />
-                        </Grid>
-
-                        <TextBlock Classes="note"
-                                   Classes.warn="{Binding HasHillProblem}"
-                                   Text="{Binding HillSummary}"
-                                   ToolTip.Tip="{Binding RaiseHillsHelp}" />
-
-                        <Border ToolTip.Tip="{Binding RaiseHillsHelp}" Background="Transparent">
-                            <Button Classes="primary"
-                                    Content="Raise Hills"
-                                    Command="{Binding BuildHillsCommand}" />
-                        </Border>
-
-                        <Border Classes="rule" />
-
-                        <TextBlock Classes="field" Text="MOUNTAINS" />
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding MountainCoverageHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="60"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding MountainCoverage}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding MountainCoverage, StringFormat=\{0:0\}%}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RuggednessHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Rugged" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="100"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding Ruggedness}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding Ruggedness, StringFormat=\{0:0\}%}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RangeSizeHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Range" />
-                            <Slider Grid.Column="1" Minimum="4" Maximum="80"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding RangeSize}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding RangeSize, StringFormat=\{0:0\}t}" />
-                        </Grid>
-
-                        <TextBlock Classes="note"
-                                   Classes.warn="{Binding HasMountainProblem}"
-                                   Text="{Binding MountainSummary}"
-                                   ToolTip.Tip="{Binding RaiseMountainsHelp}" />
-
-                        <Border ToolTip.Tip="{Binding RaiseMountainsHelp}" Background="Transparent">
-                            <Button Classes="primary"
-                                    Content="Raise Mountains"
-                                    Command="{Binding BuildMountainsCommand}" />
-                        </Border>
-
-                        <Border Classes="rule" />
-
-                        <!-- The one thing the two do share, and only because a seed is what
-                             says which world this is. -->
-                        <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding TerrainSeedHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
-                            <TextBox Grid.Column="1" Text="{Binding TerrainSeed}" Watermark="1" />
-                            <Button Grid.Column="3" Classes="quiet" Content="New"
-                                    Command="{Binding NewTerrainSeedCommand}"
-                                    ToolTip.Tip="{Binding TerrainSeedHelp}" />
-                        </Grid>
-
-                    </StackPanel>
-                </Expander>
-            </Border>
-
-            <Border Classes="card">
-                <Expander ToolTip.Tip="{Binding CoverHelp}">
-                    <Expander.Header>
-                        <TextBlock Classes="panelTitle" Text="Swamps and Deserts" />
-                    </Expander.Header>
-
-                    <StackPanel Spacing="10">
-
-                        <!-- The grain of both, so it sits above them both. -->
-                        <TextBlock Classes="field" Text="SHAPE" />
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding PatchSizeHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Patch" />
-                            <Slider Grid.Column="1" Minimum="3" Maximum="60"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding PatchSize}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding PatchSize, StringFormat=\{0:0\}t}" />
-                        </Grid>
-
-                        <!-- How big a patch is, and then whether the patches keep company.
-                             Two questions, so two dials. -->
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding ClusteringHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Cluster" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="100"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding CoverClustering}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding CoverClustering, StringFormat=\{0:0\}%}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding CoverSeedHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
-                            <TextBox Grid.Column="1" Text="{Binding CoverSeed}" Watermark="1" />
-                            <Button Grid.Column="3" Classes="quiet" Content="New"
-                                    Command="{Binding NewCoverSeedCommand}"
-                                    ToolTip.Tip="{Binding CoverSeedHelp}" />
-                        </Grid>
-
-                        <Border Classes="rule" />
-
-                        <TextBlock Classes="field" Text="SWAMPS" />
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding SwampCoverageHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="60"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding SwampCoverage}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding SwampCoverage, StringFormat=\{0:0\}%}" />
-                        </Grid>
-
-                        <TextBlock Classes="note"
-                                   Classes.warn="{Binding HasSwampProblem}"
-                                   Text="{Binding SwampSummary}"
-                                   ToolTip.Tip="{Binding SwampCoverageHelp}" />
-
-                        <Border ToolTip.Tip="{Binding SwampCoverageHelp}" Background="Transparent">
-                            <Button Classes="primary"
-                                    Content="Spread Swamps"
-                                    Command="{Binding BuildSwampsCommand}" />
-                        </Border>
-
-                        <Border Classes="rule" />
-
-                        <TextBlock Classes="field" Text="DESERTS" />
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding DesertCoverageHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Cover" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="60"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding DesertCoverage}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding DesertCoverage, StringFormat=\{0:0\}%}" />
-                        </Grid>
-
-                        <TextBlock Classes="note"
-                                   Classes.warn="{Binding HasDesertProblem}"
-                                   Text="{Binding DesertSummary}"
-                                   ToolTip.Tip="{Binding DesertCoverageHelp}" />
-
-                        <Border ToolTip.Tip="{Binding DesertCoverageHelp}" Background="Transparent">
-                            <Button Classes="primary"
-                                    Content="Spread Deserts"
-                                    Command="{Binding BuildDesertsCommand}" />
-                        </Border>
-
-                    </StackPanel>
-                </Expander>
-            </Border>
-
-            <Border Classes="card">
-                <Expander ToolTip.Tip="{Binding RiverHelp}">
-                    <Expander.Header>
-                        <TextBlock Classes="panelTitle" Text="Rivers" />
-                    </Expander.Header>
-
-                    <StackPanel Spacing="10">
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RiverCountHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Rivers" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="24"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding RiverCount}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding RiverCount, StringFormat=\{0:0\}}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RiverWindingHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Winding" />
-                            <Slider Grid.Column="1" Minimum="0" Maximum="100"
-                                    TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Value="{Binding RiverWinding}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding RiverWinding, StringFormat=\{0:0\}%}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RiverLengthHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Length" />
-                            <Slider Grid.Column="1" Minimum="5" Maximum="250"
-                                    TickFrequency="5" IsSnapToTickEnabled="True"
-                                    Value="{Binding RiverLength}" />
-                            <TextBlock Grid.Column="2" Classes="reading"
-                                       Text="{Binding RiverLength, StringFormat=\{0:0\}t}" />
-                        </Grid>
-
-                        <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding RiverSeedHelp}">
-                            <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
-                            <TextBox Grid.Column="1" Text="{Binding RiverSeed}" Watermark="1" />
-                            <Button Grid.Column="3" Classes="quiet" Content="New"
-                                    Command="{Binding NewRiverSeedCommand}"
-                                    ToolTip.Tip="{Binding RiverSeedHelp}" />
-                        </Grid>
-
-                        <TextBlock Classes="note"
-                                   Classes.warn="{Binding HasRiverProblem}"
-                                   Text="{Binding RiverSummary}"
-                                   ToolTip.Tip="{Binding RiverHelp}" />
-
-                        <Border ToolTip.Tip="{Binding RiverHelp}" Background="Transparent">
-                            <Button Classes="primary"
-                                    Content="Add Rivers"
-                                    Command="{Binding BuildRiversCommand}" />
-                        </Border>
-
-                    </StackPanel>
-                </Expander>
-            </Border>
-
-            <Border Classes="card">
-                <Expander ToolTip.Tip="{Binding ViewHelp}">
-                    <Expander.Header>
-                        <TextBlock Classes="panelTitle" Text="View" />
-                    </Expander.Header>
-
-                    <StackPanel Spacing="8">
-                        <CheckBox Content="Animations"
-                                  IsChecked="{Binding IsAnimated}"
-                                  ToolTip.Tip="{Binding AnimationHelp}" />
-                        <CheckBox Content="Frame rate"
-                                  IsChecked="{Binding ShowFrameRate}"
-                                  ToolTip.Tip="{Binding FrameRateHelp}" />
-                        <CheckBox Content="Elevation"
-                                  IsChecked="{Binding ShowElevation}"
-                                  ToolTip.Tip="{Binding ElevationHelp}" />
-                    </StackPanel>
-                </Expander>
-            </Border>
-
-            <Border ToolTip.Tip="{Binding UndoHelp}" Background="Transparent">
-                <Button Classes="quiet"
-                        Content="Undo"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Center"
-                        Command="{Binding UndoCommand}" />
-            </Border>
-
-        </controls:AccordionPanel>
+                        </StackPanel>
+                    </Expander>
+                </Border>
+
+                <Border Classes="card">
+                    <Expander ToolTip.Tip="{Binding ViewHelp}">
+                        <Expander.Header>
+                            <TextBlock Classes="panelTitle" Text="View" />
+                        </Expander.Header>
+
+                        <StackPanel Spacing="8">
+                            <CheckBox Content="Animations"
+                                      IsChecked="{Binding IsAnimated}"
+                                      ToolTip.Tip="{Binding AnimationHelp}" />
+                            <CheckBox Content="Frame rate"
+                                      IsChecked="{Binding ShowFrameRate}"
+                                      ToolTip.Tip="{Binding FrameRateHelp}" />
+                            <CheckBox Content="Elevation"
+                                      IsChecked="{Binding ShowElevation}"
+                                      ToolTip.Tip="{Binding ElevationHelp}" />
+                        </StackPanel>
+                    </Expander>
+                </Border>
+
+                <Border ToolTip.Tip="{Binding UndoHelp}" Background="Transparent">
+                    <Button Classes="quiet"
+                            Content="Undo"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Command="{Binding UndoCommand}" />
+                </Border>
+
+            </controls:AccordionPanel>
+
+        </ScrollViewer>
 
     </Panel>
 

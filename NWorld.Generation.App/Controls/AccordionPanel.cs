@@ -1,6 +1,8 @@
+using System;
 using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 
 namespace NWorld.Generation.App.Controls;
@@ -58,5 +60,45 @@ public class AccordionPanel : StackPanel
         {
             panel._closing = false;
         }
+
+        Reveal(panel, expander);
+    }
+
+    /// <summary>
+    /// Scrolls the panel just opened to the top of whatever is scrolling the stack, if
+    /// anything is.
+    /// <para>
+    /// Because a panel can be taller than the window. Opening the last one in the stack put
+    /// its header on screen and left its buttons below the bottom edge -- reachable, since the
+    /// stack scrolls, but only by someone who thought to look. Scrolling to the top of the
+    /// panel that was just asked for shows as much of it as there is room for, and it is the
+    /// top that matters: the header says which panel this is.
+    /// </para>
+    /// <para>
+    /// Deferred to after the layout pass, because the panel being opened has no height yet and
+    /// the ones being closed still have theirs -- scrolling now would be scrolling to where
+    /// this panel is about to stop being.
+    /// </para>
+    /// </summary>
+    private static void Reveal(AccordionPanel panel, Expander expander)
+    {
+        if (panel.FindAncestorOfType<ScrollViewer>() is not { } scroller)
+            return;
+
+        Dispatcher.UIThread.Post(
+            () =>
+            {
+                // Where the expander's top edge sits in the scrolled content: its offset from
+                // the top of the viewport, plus however far the viewport has already been
+                // scrolled.
+                if (expander.TranslatePoint(default, scroller) is not { } corner)
+                    return;
+
+                var furthest = Math.Max(0, scroller.Extent.Height - scroller.Viewport.Height);
+                var wanted = Math.Clamp(scroller.Offset.Y + corner.Y, 0, furthest);
+
+                scroller.Offset = new Vector(scroller.Offset.X, wanted);
+            },
+            DispatcherPriority.Loaded);
     }
 }
