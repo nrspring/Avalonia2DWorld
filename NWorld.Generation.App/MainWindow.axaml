@@ -141,6 +141,15 @@
             <Setter Property="Padding" Value="8,0,0,0" />
         </Style>
 
+        <!-- The same, so a choice of pictures sits at the same size and weight as the
+             toggles under it. Different template, same panel. -->
+        <Style Selector="Border.card RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="8,0,0,0" />
+        </Style>
+
         <!-- A slider sized to the panel rather than to a touch screen: the stock one is
              more than twice this tall, which on a stack of three reads as a form rather than
              as a row of dials. -->
@@ -938,13 +947,31 @@
                         </Expander.Header>
 
                         <StackPanel Spacing="8">
+
+                            <TextBlock Classes="field" Text="PICTURE" />
+
+                            <StackPanel Spacing="6" ToolTip.Tip="{Binding RendererHelp}">
+                                <RadioButton Content="Terrain"
+                                             GroupName="picture"
+                                             IsChecked="{Binding IsTerrainView}" />
+                                <RadioButton Content="Elevation"
+                                             GroupName="picture"
+                                             IsChecked="{Binding IsHeightView}" />
+                            </StackPanel>
+
+                            <Border Classes="rule" />
+
                             <CheckBox Content="Animations"
                                       IsChecked="{Binding IsAnimated}"
                                       ToolTip.Tip="{Binding AnimationHelp}" />
                             <CheckBox Content="Frame rate"
                                       IsChecked="{Binding ShowFrameRate}"
                                       ToolTip.Tip="{Binding FrameRateHelp}" />
-                            <CheckBox Content="Elevation"
+
+                            <!-- Numbers on the tiles, which is not the picture above: named
+                                 for what it puts on the map rather than for the height it
+                                 says, now that a whole picture is called Elevation. -->
+                            <CheckBox Content="Elevation numbers"
                                       IsChecked="{Binding ShowElevation}"
                                       ToolTip.Tip="{Binding ElevationHelp}" />
                         </StackPanel>

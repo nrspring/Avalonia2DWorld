@@ -77,12 +77,22 @@ namespace NWorld.Map.ViewModels
         {
             ArgumentNullException.ThrowIfNull(renderer);
 
-            Renderer = renderer;
+            _renderer = renderer;
             _options = options ?? MapViewOptions.Default;
         }
 
+        /// <summary>
+        /// How the map is drawn, as opposed to what is drawn: the renderer the view hands its
+        /// tiles to.
+        /// <para>
+        /// Settable, so a view model can offer a choice of them -- the same map read as
+        /// terrain or as height. The control repaints on the change, and the old renderer is
+        /// left whole rather than reset, so switching back is free.
+        /// </para>
+        /// </summary>
         /// <inheritdoc cref="MapViewModelBase(IMapRenderer, MapViewOptions?)" path="/param[@name='renderer']"/>
-        public IMapRenderer Renderer { get; }
+        [ObservableProperty]
+        private IMapRenderer _renderer;
 
         /// <summary>Whether there is a map to draw.</summary>
         public bool HasMap => Tiles is not null;

@@ -822,6 +822,14 @@ namespace NWorld.Map.Controls
             private SKImage? _previous;
 
             private TileGrid? _tiles;
+
+            /// <summary>
+            /// Who drew the picture. Part of what makes it stale: the view model may offer a
+            /// choice of renderers, and a cached inset drawn by the one that has just been
+            /// switched away from would stand there until the tiles themselves changed.
+            /// </summary>
+            private IMapRenderer? _renderer;
+
             private int _width;
             private int _height;
             private double _builtAt;
@@ -848,7 +856,9 @@ namespace NWorld.Map.Controls
                 if ((long)width * height > MaxSnapshotPixels)
                     return null;
 
-                var sameShape = _image is not null && _width == width && _height == height;
+                var sameShape = _image is not null && _width == width && _height == height &&
+                    ReferenceEquals(_renderer, renderer);
+
                 if (sameShape && (ReferenceEquals(_tiles, tiles) || nowSeconds - _builtAt < RefreshSeconds))
                     return _image;
 
@@ -887,6 +897,7 @@ namespace NWorld.Map.Controls
                 _image = surface.Snapshot();
 
                 _tiles = tiles;
+                _renderer = renderer;
                 _width = width;
                 _height = height;
                 _builtAt = nowSeconds;

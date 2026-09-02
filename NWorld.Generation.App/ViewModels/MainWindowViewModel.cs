@@ -7,6 +7,7 @@ using System.IO;
 using System.Text.Json;
 using NWorld.Generation.App.Generation;
 using NWorld.Generation.App.Persistence;
+using NWorld.Map.Interfaces;
 using NWorld.Map.Models;
 using NWorld.Map.ViewModels;
 using NWorld.MapServices.Constants;
@@ -104,6 +105,23 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// </summary>
     private bool _labelled;
 
+    /// <summary>
+    /// The world as it is made: ground, cover, deposits, and the marks on top of them.
+    /// <para>
+    /// Held rather than built on each switch, because it is the expensive one. Its components
+    /// cache an atlas or a sprite sheet per zoom level, and throwing the instance away would
+    /// not throw those away -- they are static, and shared by every instance -- but building a
+    /// second renderer to hold nothing is still a second renderer.
+    /// </para>
+    /// </summary>
+    private readonly IMapRenderer _terrainView;
+
+    /// <summary>The same world as height alone. See <see cref="ElevationRenderer"/>.</summary>
+    private readonly IMapRenderer _heightView = new ElevationRenderer();
+
+    /// <summary>Which of the two the map is being drawn with.</summary>
+    private bool _height;
+
     public MainWindowViewModel()
         : base(
             // One renderer for this view model's one map view: StandardRenderer reuses its
@@ -112,6 +130,56 @@ public partial class MainWindowViewModel : MapViewModelBase
             new StandardRenderer(),
             new MapViewOptions { TileSize = 16, MiniMap = MiniMapLocation.LowerRight })
     {
+        // Taken back off the base rather than built again here, which is the only way to hold
+        // on to the instance the base was handed: a field initialiser cannot be passed to a
+        // base constructor.
+        _terrainView = Renderer;
+    }
+
+    /// <summary>
+    /// Whether the map is drawn as the world it is. What the Terrain radio button binds to.
+    /// <para>
+    /// A pair of booleans rather than an enum and a converter, because that is what a radio
+    /// button binds to, and two of them is the whole of the choice.
+    /// </para>
+    /// </summary>
+    public bool IsTerrainView
+    {
+        get => !_height;
+        set
+        {
+            if (value)
+                Show(height: false);
+        }
+    }
+
+    /// <summary>Whether the map is drawn as height alone.</summary>
+    /// <inheritdoc cref="IsTerrainView" path="/summary/para"/>
+    public bool IsHeightView
+    {
+        get => _height;
+        set
+        {
+            if (value)
+                Show(height: true);
+        }
+    }
+
+    /// <summary>
+    /// Swaps the renderer under the view. Nothing else changes: not a tile, not the zoom, not
+    /// where the view is looking -- this is the same map read a different way, and coming back
+    /// from it should land exactly where it left.
+    /// </summary>
+    private void Show(bool height)
+    {
+        if (_height == height)
+            return;
+
+        _height = height;
+        Renderer = height ? _heightView : _terrainView;
+
+        OnPropertyChanged(nameof(IsTerrainView));
+        OnPropertyChanged(nameof(IsHeightView));
     }
 
     [ObservableProperty]
@@ -399,6 +467,26 @@ public partial class MainWindowViewModel : MapViewModelBase
     public string ViewHelp =>
         "How the map is drawn, as opposed to what is on it.\n\n" +
         "Nothing here changes a single tile, so none of it can be got wrong.";
+
+    /// <summary>The renderer choice's tooltip.</summary>
+    public string RendererHelp =>
+        ("Which picture of the map to draw. The map itself is the same either way.@@" +
+         "Terrain is the world as it is made: ground, cover, rivers, deposits, and the hover " +
+         "and selection marks over them.@@" +
+         "Elevation throws all of that away and draws height alone. The sea is black and the " +
+         "land runs from a near-black grey at the flats to nearly white at the highest peak, " +
+         "by an even step per elevation. It is the picture to check a range against, because " +
+         "it is the only one with nothing else in it: a coastline, a pass and a saddle are " +
+         "all far easier to read once the grass and the marshes are gone.@@" +
+         "Rivers are the one thing it keeps, in blue, at the height they cross -- so the water " +
+         "lightens as it climbs towards its source, and the valley it came down is still a " +
+         "valley you can find. Nothing else on the tile shows.@@" +
+         "Nothing else moves with it. The zoom, where the view is looking, and every tile on " +
+         "the map are exactly as they were, so switching back and forth costs nothing but the " +
+         "repaint.@@" +
+         "The elevation numbers below show in either picture. They are worth turning on here " +
+         "above all: the greys say which of two slopes is the higher and only the number says " +
+         "by how much.").Replace("@@", "\n\n");
 
     /// <summary>The animation toggle's tooltip.</summary>
     public string AnimationHelp =>

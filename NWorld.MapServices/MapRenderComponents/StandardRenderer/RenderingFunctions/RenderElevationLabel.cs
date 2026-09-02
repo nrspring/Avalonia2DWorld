@@ -33,8 +33,13 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunct
         /// is also what keeps the mini-map clear: the inset draws every tile at a size of a
         /// few pixels, so it falls under this on any map worth insetting.
         /// </para>
+        /// <para>
+        /// Public because a renderer may want to know before it goes to the trouble of
+        /// gathering the labels: under this size the answer is nothing whatever, and finding
+        /// that out after collecting a screenful of placements is finding it out too late.
+        /// </para>
         /// </summary>
-        private const int MinTileSize = 12;
+        public const int MinTileSize = 12;
 
         /// <summary>
         /// How many characters the glyph size is chosen to fit across a tile. A longer label
