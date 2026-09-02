@@ -1,6 +1,6 @@
 ﻿using NWorld.Map.Interfaces;
 using NWorld.Map.Models;
-using NWorld.MapServices.MapRenderComponents;
+using NWorld.MapServices.MapRenderComponents.StandardRenderer;
 using SkiaSharp;
 using System;
 using System.Collections.Generic;

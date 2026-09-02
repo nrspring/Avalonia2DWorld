@@ -1,9 +1,9 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using NWorld.Map.Models;
 using SkiaSharp;
 
-namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions
 {
     /// <summary>
     /// Writes a number over the middle of a tile -- its elevation, taken from the component's

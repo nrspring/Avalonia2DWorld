@@ -1,8 +1,8 @@
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using NWorld.Map.Models;
 using SkiaSharp;
 
-namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions
 {
     /// <summary>
     /// Washes a tile orange to show it is in range: a flat translucent square, no outline.

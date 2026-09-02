@@ -4,9 +4,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using SkiaSharp;
 using NWorld.Map.Models;
-using NWorld.MapServices.MapRenderComponents.RenderingFunctions;
+using NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions;
 
-namespace NWorld.MapServices.MapRenderComponents
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 {
     public static class RenderHelperFunctions
     {

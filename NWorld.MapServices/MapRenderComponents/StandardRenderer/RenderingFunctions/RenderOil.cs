@@ -1,10 +1,10 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using NWorld.Map.Models;
 using SkiaSharp;
-using static NWorld.MapServices.MapRenderComponents.RenderNoise;
+using static NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderNoise;
 
-namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions
 {
     /// <summary>
     /// An oil seep: flat pools of it lying on the ground, near black, with the sheen that only

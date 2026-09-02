@@ -1,8 +1,8 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using SkiaSharp;
 
-namespace NWorld.MapServices.MapRenderComponents
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 {
     /// <summary>
     /// A coarse field sampled in <b>map</b> space, one texel per tile, laid over a ground layer

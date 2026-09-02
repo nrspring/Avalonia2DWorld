@@ -1,7 +1,7 @@
-using System;
+﻿using System;
 using SkiaSharp;
 
-namespace NWorld.MapServices.MapRenderComponents
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 {
     /// <summary>
     /// The deterministic noise and colour arithmetic the render functions build their textures

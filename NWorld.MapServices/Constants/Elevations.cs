@@ -14,7 +14,7 @@ namespace NWorld.MapServices.Constants
     /// nothing about what a world is made of -- a tile there has an elevation the way it has an
     /// X, as a number nobody has interpreted yet. Deciding that eleven is a mountain is the same
     /// kind of decision as deciding what grass looks like, so it lives with
-    /// <see cref="MapRenderComponents.MapRenderComponentConstants"/>: the lowest layer that both
+    /// <see cref="MapRenderComponents.StandardRenderer.MapRenderComponentConstants"/>: the lowest layer that both
     /// the renderers below and the generators above can see.
     /// </para>
     /// </summary>

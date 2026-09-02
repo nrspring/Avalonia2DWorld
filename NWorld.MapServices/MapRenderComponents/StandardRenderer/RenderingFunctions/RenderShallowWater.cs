@@ -1,8 +1,8 @@
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using NWorld.Map.Models;
 using SkiaSharp;
 
-namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions
 {
     /// <summary>
     /// The sea over a shelf: close enough to the shore that the bottom is still doing some of

@@ -1,7 +1,7 @@
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
 using NWorld.Map.Models;
 
-namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions
 {
     /// <summary>
     /// Draws nothing. Empty is the default component type -- the all-zero Guid, which is what

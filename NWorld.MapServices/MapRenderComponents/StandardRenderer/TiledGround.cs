@@ -1,9 +1,9 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using NWorld.Map.Models;
 using SkiaSharp;
 
-namespace NWorld.MapServices.MapRenderComponents
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 {
     /// <summary>
     /// Fills the pixels of one block-sized texture. <paramref name="edge"/> is the block in

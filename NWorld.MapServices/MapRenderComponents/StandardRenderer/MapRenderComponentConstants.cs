@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace NWorld.MapServices.MapRenderComponents
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 {
     public static class MapRenderComponentConstants
     {

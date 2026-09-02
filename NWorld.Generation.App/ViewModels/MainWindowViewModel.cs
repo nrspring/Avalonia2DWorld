@@ -11,7 +11,7 @@ using NWorld.Map.Models;
 using NWorld.Map.ViewModels;
 using NWorld.MapServices.Constants;
 using NWorld.MapServices.ExtensionMethods;
-using NWorld.MapServices.MapRenderComponents;
+using NWorld.MapServices.MapRenderComponents.StandardRenderer;
 using NWorld.MapServices.Renderers;
 
 namespace NWorld.Generation.App.ViewModels;

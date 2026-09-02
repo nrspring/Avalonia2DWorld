@@ -1,13 +1,13 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using NWorld.Map.Models;
 using SkiaSharp;
-using static NWorld.MapServices.MapRenderComponents.RenderNoise;
+using static NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderNoise;
 
-namespace NWorld.MapServices.MapRenderComponents.RenderingFunctions
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions
 {
     /// <summary>
     /// Draws a grass tile at map coordinate (x, y), i.e. pixel (x * tileSize, y * tileSize).

@@ -4,7 +4,7 @@ using NWorld.Map.Models;
 using NWorld.MapServices.Constants;
 using SkiaSharp;
 
-namespace NWorld.MapServices.MapRenderComponents
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 {
     /// <summary>
     /// How bright a ground tile is drawn for the elevation it sits at: flat land as it always

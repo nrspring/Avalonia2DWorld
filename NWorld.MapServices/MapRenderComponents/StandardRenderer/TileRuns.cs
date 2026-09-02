@@ -1,8 +1,8 @@
-using System;
+﻿using System;
 using NWorld.Map.Models;
 using SkiaSharp;
 
-namespace NWorld.MapServices.MapRenderComponents
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 {
     /// <summary>
     /// Covers a batch of tiles with a paint, using as few rects as the batch allows.

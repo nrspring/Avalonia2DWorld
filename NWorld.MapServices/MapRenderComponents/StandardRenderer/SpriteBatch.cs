@@ -1,7 +1,7 @@
-using System;
+﻿using System;
 using SkiaSharp;
 
-namespace NWorld.MapServices.MapRenderComponents
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 {
     /// <summary>
     /// The buffers behind a <c>DrawAtlas</c>, and the arithmetic of sizing them.

@@ -6,9 +6,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using NWorld.Map.Models;
 using SkiaSharp;
-using static NWorld.MapServices.MapRenderComponents.RenderNoise;
+using static NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderNoise;
 
-namespace NWorld.MapServices.MapRenderComponents
+namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 {
     /// <summary>
     /// How one kind of water is coloured and lit. Everything about the wave *shape* is shared
