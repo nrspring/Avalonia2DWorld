@@ -16,6 +16,11 @@ namespace NWorld.MapServices.MapRenderComponents
         public static Guid Swamp { get; } = new Guid("44444444-4444-4444-4444-444444444444");
         public static Guid Desert { get; } = new Guid("55555555-5555-5555-5555-555555555555");
 
+        //Sea over a shelf. Its own type rather than the Water above, which rivers use: a
+        //tile's ground is what the generation passes read the map back out of, and one type
+        //for both would leave them unable to tell a river from the bay it runs into.
+        public static Guid ShallowWater { get; } = new Guid("5A5A5A5A-5A5A-5A5A-5A5A-5A5A5A5A5A5A");
+
         //Highlight types
         public static Guid Hover { get; } = new Guid("66666666-6666-6666-6666-666666666666");
         public static Guid Selected { get; } = new Guid("77777777-7777-7777-7777-777777777777");

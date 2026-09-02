@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -25,6 +25,7 @@ namespace NWorld.MapServices.MapRenderComponents
             { MapRenderComponentConstants.Grass, new(RenderGrass.Render, RenderGrass.Prewarm, RenderGrass.ClearCache) },
             { MapRenderComponentConstants.Water, new(RenderWater.Render, RenderWater.Prewarm, RenderWater.ClearCache) },
             { MapRenderComponentConstants.DeepWater, new(RenderDeepWater.Render, RenderDeepWater.Prewarm, RenderDeepWater.ClearCache) },
+            { MapRenderComponentConstants.ShallowWater, new(RenderShallowWater.Render, RenderShallowWater.Prewarm, RenderShallowWater.ClearCache) },
             { MapRenderComponentConstants.Swamp, new(RenderSwamp.Render, RenderSwamp.Prewarm, RenderSwamp.ClearCache) },
             { MapRenderComponentConstants.Desert, new(RenderDesert.Render, RenderDesert.Prewarm, RenderDesert.ClearCache) },
             { MapRenderComponentConstants.Hover, new(RenderHover.Render, RenderHover.Prewarm, RenderHover.ClearCache) },

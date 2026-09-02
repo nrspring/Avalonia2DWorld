@@ -185,6 +185,19 @@ public partial class MainWindowViewModel : MapViewModelBase
     [NotifyPropertyChangedFor(nameof(IslandSummary), nameof(HasIslandProblem))]
     private string _islandSeed = "1";
 
+    /// <summary>How far the shallows reach out from the land, in tiles.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShallowsSummary))]
+    private double _shallowsReach = 5;
+
+    /// <summary>
+    /// How much that reach wanders along the coast, as a percentage. Not zero by default: a
+    /// shelf of one width the whole way round is the one thing that gives a drawn sea away.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShallowsSummary))]
+    private double _shallowsVariation = 55;
+
     /// <summary>How much of the land ends up as mountain, as a percentage.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(MountainSummary))]
@@ -341,6 +354,36 @@ public partial class MainWindowViewModel : MapViewModelBase
         "Turning it off stops the repaint loop altogether, so the map is redrawn only when " +
         "something changes it. That costs nothing while the map sits idle, and it leaves " +
         "the frame rate with nothing to measure.";
+
+    /// <summary>The shallows-reach tooltip.</summary>
+    public string ShallowsReachHelp =>
+        ("How far the shallow water reaches out from the land, in tiles.@@" +
+         "Measured from every shore at once, so an island gets its own shelf and a strait " +
+         "narrower than twice this is shallow the whole way across -- which is what a strait " +
+         "is.@@" +
+         "An average rather than a rule: the variation dial moves the drop-off in and out " +
+         "either side of it. At zero reach there are no shallows at all and the sea runs deep " +
+         "up to the beach.").Replace("@@", "\n\n");
+
+    /// <summary>The shallows-variation tooltip.</summary>
+    public string ShallowsVariationHelp =>
+        ("How much the reach wanders along the coast.@@" +
+         "At nothing the shallows are a ribbon of one width the whole way round, which is the " +
+         "one thing that gives a drawn sea away as a measurement. Turn it up and the shelf " +
+         "runs from nothing at one headland to twice the reach across the next bay.@@" +
+         "It moves the edge of the shelf over the length of a bay rather than tile by tile. " +
+         "A finer wander would fray the drop-off into speckle, which reads as a fault in the " +
+         "picture rather than as water.").Replace("@@", "\n\n");
+
+    /// <summary>What the Shallows button does.</summary>
+    public string BuildShallowsHelp =>
+        ("Mark the sea near the land as shallow and draw it paler.@@" +
+         "Depth here is drawn and not modelled. The sea is all at one level and stays there; " +
+         "a shallow is a tile of water near enough to a shore that a map would show the " +
+         "bottom through it. Nothing moves, nothing is raised, and no coastline changes.@@" +
+         "Run it after the land is the shape you want. It reads the coast as it stands, so " +
+         "building continents or islands afterwards leaves the old shelf behind -- press it " +
+         "again and it will follow the new shore.").Replace("@@", "\n\n");
 
     /// <summary>What the Hills and Mountains panel is for.</summary>
     public string TerrainHelp =>
@@ -852,6 +895,79 @@ public partial class MainWindowViewModel : MapViewModelBase
         IslandSeed = NewSeed();
 
     /// <summary>
+    /// The line under the shallows controls: what the next pass will do, or what is stopping
+    /// it.
+    /// </summary>
+    public string ShallowsSummary
+    {
+        get
+        {
+            if (Tiles is null)
+                return "Make a map in Start first.";
+
+            if (_land is null)
+                return "Build some land first.";
+
+            var reach = (int)ShallowsReach;
+
+            if (reach <= 0)
+                return "Deep water right up to the beach.";
+
+            var edge = ShallowsVariation switch
+            {
+                >= 80 => "wandering far in and out",
+                >= 40 => "wandering along the coast",
+                > 0 => "barely wandering",
+                _ => "at one width the whole way round",
+            };
+
+            return $"Shallows about {reach:N0} tiles out, {edge}.";
+        }
+    }
+
+    /// <inheritdoc cref="HasSizeProblem"/>
+    public bool HasShallowsProblem => !CanBuildShallows();
+
+    /// <summary>
+    /// Marks the sea near the land as shallow and puts the result on screen.
+    /// <para>
+    /// Depth only. The land mask, the relief and every cover on the land come through exactly
+    /// as they were -- this changes how a tile of sea is drawn and nothing else at all.
+    /// </para>
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanBuildShallows))]
+    private void BuildShallows()
+    {
+        if (_map is not { } map || _land is not { } land)
+            return;
+
+        Remember();
+
+        var relief = CurrentRelief(map);
+
+        // The continents' seed rather than one of its own. The shelf is a property of this
+        // coastline and the coastline is that seed's doing, so a world re-rolled from it gets
+        // a new shore and new shallows together -- which is one dial fewer on a panel that
+        // already has two seeds on it.
+        var cover = ShallowsBuilder.Mark(
+            map.Width, map.Height, land, CurrentCover(map),
+            new ShallowSettings(ShallowsReach, ShallowsVariation / 100, ReadSeedOr(ContinentSeed, 1)));
+
+        Rebuild(map, relief, cover);
+    }
+
+    /// <summary>Whether there is a coast to lay a shelf against.</summary>
+    private bool CanBuildShallows() => _map is not null && _land is not null;
+
+    /// <summary>
+    /// A seed box read for a pass that does not have a seed box of its own, falling back
+    /// rather than refusing: the shallows are worth having on a map whose continent seed has
+    /// been typed into and left half-finished.
+    /// </summary>
+    private static int ReadSeedOr(string text, int fallback) =>
+        TryReadSeed(text, out var seed) ? seed : fallback;
+
+    /// <summary>
     /// The line under the hill controls: what the next raise will do, or what is stopping it.
     /// </summary>
     public string HillSummary
@@ -1016,6 +1132,7 @@ public partial class MainWindowViewModel : MapViewModelBase
                 ground.ComponentType == MapRenderComponentConstants.Swamp ? GroundCover.Swamp :
                 ground.ComponentType == MapRenderComponentConstants.Desert ? GroundCover.Desert :
                 ground.ComponentType == MapRenderComponentConstants.Water ? GroundCover.River :
+                ground.ComponentType == MapRenderComponentConstants.ShallowWater ? GroundCover.Shallow :
                 GroundCover.Grass;
         }
 
@@ -1255,6 +1372,8 @@ public partial class MainWindowViewModel : MapViewModelBase
                 IslandSize = IslandSize,
                 IslandCoastHug = IslandCoastHug,
                 IslandSeed = IslandSeed,
+                ShallowsReach = ShallowsReach,
+                ShallowsVariation = ShallowsVariation,
                 MountainCoverage = MountainCoverage,
                 HillCoverage = HillCoverage,
                 Ruggedness = Ruggedness,
@@ -1341,6 +1460,8 @@ public partial class MainWindowViewModel : MapViewModelBase
         IslandSize = settings.IslandSize ?? IslandSize;
         IslandCoastHug = settings.IslandCoastHug ?? IslandCoastHug;
         IslandSeed = settings.IslandSeed ?? IslandSeed;
+        ShallowsReach = settings.ShallowsReach ?? ShallowsReach;
+        ShallowsVariation = settings.ShallowsVariation ?? ShallowsVariation;
 
         MountainCoverage = settings.MountainCoverage ?? MountainCoverage;
         HillCoverage = settings.HillCoverage ?? HillCoverage;
@@ -1494,8 +1615,10 @@ public partial class MainWindowViewModel : MapViewModelBase
             var index = ((coordinate.Y - map.OriginY) * map.Width) + (coordinate.X - map.OriginX);
             var elevation = relief[index];
 
+            // Depth is the sea's whole cover, and the only one it can carry: everything else
+            // in the enum is something the ground is made of, and there is no ground here.
             if (elevation <= Elevations.Sea)
-                return BuildOceanTile(coordinate);
+                return BuildOceanTile(coordinate, cover[index] == GroundCover.Shallow);
 
             // The one place the rule is enforced, so nothing else has to remember it: swamp
             // and desert are lowland covers, and ground raised out of the lowlands loses
@@ -1540,7 +1663,8 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         Remember();
 
-        _map = new TileMap(width, height, fill: BuildOceanTile);
+        // A new map is all deep water: there is no land yet for a shelf to be near.
+        _map = new TileMap(width, height, fill: coordinate => BuildOceanTile(coordinate, shallow: false));
         _land = null;
         _labelled = ShowElevation;
 
@@ -1585,6 +1709,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         BuildMountainsCommand.NotifyCanExecuteChanged();
         BuildSwampsCommand.NotifyCanExecuteChanged();
         BuildDesertsCommand.NotifyCanExecuteChanged();
+        BuildShallowsCommand.NotifyCanExecuteChanged();
         UndoCommand.NotifyCanExecuteChanged();
 
         OnPropertyChanged(nameof(LandSummary));
@@ -1595,6 +1720,8 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(HasHillProblem));
         OnPropertyChanged(nameof(MountainSummary));
         OnPropertyChanged(nameof(HasMountainProblem));
+        OnPropertyChanged(nameof(ShallowsSummary));
+        OnPropertyChanged(nameof(HasShallowsProblem));
         OnPropertyChanged(nameof(SwampSummary));
         OnPropertyChanged(nameof(HasSwampProblem));
         OnPropertyChanged(nameof(DesertSummary));
@@ -1725,15 +1852,17 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// very number in question -- any land a later pass leaves at zero would be taken for sea.
     /// </para>
     /// <para>
-    /// The deep water only, and not the wadeable kind beside it, because that is what a river
-    /// is drawn as. A river takes the height of the ground it runs over and is the one water
-    /// on the map that is not all at one level -- so its number is worth reading, and is in
-    /// fact the number somebody checking a river runs downhill would want most.
+    /// Both depths of sea, and neither of them is what a river is drawn as. A river takes the
+    /// height of the ground it runs over and is the one water on the map that is not all at
+    /// one level -- so its number is worth reading, and is in fact the number somebody
+    /// checking a river runs downhill would want most. A shelf is still sea, still at zero,
+    /// and still nothing to write a number on.
     /// </para>
     /// </summary>
     private static bool IsWater(MapTile tile) =>
         tile.MapRenderComponents.TryGetValue(RenderComponentLayers.BaseGround, out var ground) &&
-        ground.ComponentType == MapRenderComponentConstants.DeepWater;
+        (ground.ComponentType == MapRenderComponentConstants.DeepWater ||
+         ground.ComponentType == MapRenderComponentConstants.ShallowWater);
 
     /// <summary>
     /// Whether a map carries elevation labels at all.
@@ -1808,11 +1937,17 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// rather than left at its default, because zero is a decision here -- sea level, the
     /// datum everything the generator raises will be measured from.
     /// </summary>
-    private MapTile BuildOceanTile(TileCoordinate coordinate)
+    private MapTile BuildOceanTile(TileCoordinate coordinate, bool shallow = false)
     {
         var tile = new MapTile { X = coordinate.X, Y = coordinate.Y, Elevation = 0 };
 
-        Ground(tile, MapRenderComponentConstants.DeepWater);
+        // Both at elevation zero, and deliberately. The sea has one level whatever is under
+        // it -- a shelf is a fact about the bottom, and this map has no bottom -- so the
+        // shallows are a way of drawing the water and not a second height for it.
+        Ground(tile, shallow
+            ? MapRenderComponentConstants.ShallowWater
+            : MapRenderComponentConstants.DeepWater);
+
         Label(tile);
 
         return tile;

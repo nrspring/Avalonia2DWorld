@@ -31,6 +31,9 @@ public sealed record MapSettings
     public double? IslandCoastHug { get; init; }
     public string? IslandSeed { get; init; }
 
+    public double? ShallowsReach { get; init; }
+    public double? ShallowsVariation { get; init; }
+
     public double? MountainCoverage { get; init; }
     public double? HillCoverage { get; init; }
     public double? Ruggedness { get; init; }

@@ -459,6 +459,42 @@
                                     Command="{Binding BuildIslandsCommand}" />
                         </Border>
 
+                        <Border Classes="rule" />
+
+                        <!-- Last in the panel because it reads the coast rather than drawing
+                             one: whatever the two above have settled on is what it measures
+                             from. -->
+                        <TextBlock Classes="field" Text="SHALLOWS" />
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding ShallowsReachHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Reach" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="30"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding ShallowsReach}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding ShallowsReach, StringFormat=\{0:0\}t}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding ShallowsVariationHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Vary" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding ShallowsVariation}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding ShallowsVariation, StringFormat=\{0:0\}%}" />
+                        </Grid>
+
+                        <TextBlock Classes="note"
+                                   Classes.warn="{Binding HasShallowsProblem}"
+                                   Text="{Binding ShallowsSummary}"
+                                   ToolTip.Tip="{Binding BuildShallowsHelp}" />
+
+                        <Border ToolTip.Tip="{Binding BuildShallowsHelp}" Background="Transparent">
+                            <Button Classes="primary"
+                                    Content="Mark Shallows"
+                                    Command="{Binding BuildShallowsCommand}" />
+                        </Border>
+
                     </StackPanel>
                 </Expander>
             </Border>

@@ -28,6 +28,16 @@ public enum GroundCover
     /// low.
     /// </summary>
     River,
+
+    /// <summary>
+    /// Sea shallow enough to be drawn as such -- see <see cref="ShallowsBuilder"/>. The odd
+    /// one out here, being the only member that is never on land: everything else in this
+    /// enum answers "what is this ground made of" and this one answers "how deep is this
+    /// water". It rides along in the same array because that array is what every pass carries
+    /// from one to the next, and a second one beside it would be a second thing to keep in
+    /// step.
+    /// </summary>
+    Shallow,
 }
 
 /// <summary>
