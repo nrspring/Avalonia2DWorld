@@ -74,6 +74,24 @@ namespace NWorld.MapServices.MapRenderComponents
             return sum / total;
         }
 
+        /// <summary>
+        /// Value noise round a circle, with <paramref name="lobes"/> of them in a full turn and
+        /// matching values either side of the seam at pi. Added to a radius it gives an outline
+        /// an irregular edge that still closes on itself -- a lump rather than a disc -- which
+        /// is what the resource pieces are drawn out of.
+        /// </summary>
+        public static float PeriodicAngularNoise(float angle, int lobes, uint seed)
+        {
+            var t = angle * (lobes / MathF.Tau);
+            var i = (int)MathF.Floor(t);
+            var f = Smoothstep(0f, 1f, t - i);
+
+            return Lerp(
+                Hash01(Wrap(i, lobes), 0, seed),
+                Hash01(Wrap(i + 1, lobes), 0, seed),
+                f);
+        }
+
         public static int Wrap(int value, int period)
         {
             var m = value % period;

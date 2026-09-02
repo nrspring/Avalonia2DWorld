@@ -15,6 +15,15 @@ namespace NWorld.MapServices.Constants
     /// lets something new slide in above the units without disturbing anything already on
     /// disk.
     /// </para>
+    /// <para>
+    /// Units did move once, from 2 to 4, to open the two layers below them for resources and
+    /// for what gets built on them -- there being no room at all between the ground and the
+    /// hover, which is where those belong. It cost the maps saved before the move: anything
+    /// they hold on layer 2 now reads as a resource. That was affordable only because the sole
+    /// thing ever written there was the selection mark, which is transient and renders the same
+    /// wherever it lands. It will not be affordable again, and the gaps left above are what
+    /// mean it should not have to be.
+    /// </para>
     /// </summary>
     public static class RenderComponentLayers
     {
@@ -24,8 +33,17 @@ namespace NWorld.MapServices.Constants
         /// <summary>The tile under the pointer.</summary>
         public const int Hover = 1;
 
+        /// <summary>
+        /// What the tile is worth: ore, timber, oil. Part of the ground rather than something
+        /// placed on it, so it goes under everything that can be built or stood there.
+        /// </summary>
+        public const int Resource = 2;
+
+        /// <summary>What has been built on the tile: works on the ground rather than on it.</summary>
+        public const int Enhancement = 3;
+
         /// <summary>Whatever is standing on the tile.</summary>
-        public const int Unit = 2;
+        public const int Unit = 4;
 
         /// <summary>The elevation written over the tile. Above everything, being an instrument.</summary>
         public const int ElevationLabel = 10;

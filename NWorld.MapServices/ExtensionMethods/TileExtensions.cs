@@ -28,6 +28,28 @@ namespace NWorld.MapServices.ExtensionMethods
             });
         }
 
+        public static void SetResourceType(this Map.Models.MapTile tile,
+                                           Guid resourceType,
+                                           string[]? parameters = null)
+        {
+            tile.SetMapRenderComponent(Constants.RenderComponentLayers.Resource, new Map.Models.MapRenderComponent
+            {
+                ComponentType = resourceType,
+                Params = parameters
+            });
+        }
+
+        public static void SetEnhancementType(this Map.Models.MapTile tile,
+                                              Guid enhancementType,
+                                              string[]? parameters = null)
+        {
+            tile.SetMapRenderComponent(Constants.RenderComponentLayers.Enhancement, new Map.Models.MapRenderComponent
+            {
+                ComponentType = enhancementType,
+                Params = parameters
+            });
+        }
+
         public static void SetUnitType(this Map.Models.MapTile tile,
                                         Guid unitType,
                                         string[]? parameters = null)
