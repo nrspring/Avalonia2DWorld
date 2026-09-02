@@ -141,6 +141,22 @@
             <Setter Property="Padding" Value="8,0,0,0" />
         </Style>
 
+        <!-- ========== the key over the map ========== -->
+
+        <!-- A card like the panels, but floating in the far corner from them and holding a
+             list rather than an expander, so it carries its own padding. -->
+        <Style Selector="Border.legend">
+            <Setter Property="Margin" Value="16" />
+            <Setter Property="Padding" Value="13,11" />
+        </Style>
+
+        <!-- Pushed below the frame-rate readout, which is drawn into the same corner by the
+             map control itself and was there first. Off the toggle rather than a fixed gap,
+             so the key sits where it belongs in the ordinary case of the readout being off. -->
+        <Style Selector="Border.legend.underRate">
+            <Setter Property="Margin" Value="16,45,16,16" />
+        </Style>
+
         <!-- The same, so a choice of pictures sits at the same size and weight as the
              toggles under it. Different template, same panel. -->
         <Style Selector="Border.card RadioButton">
@@ -957,7 +973,15 @@
                                 <RadioButton Content="Elevation"
                                              GroupName="picture"
                                              IsChecked="{Binding IsHeightView}" />
+                                <RadioButton Content="Resources"
+                                             GroupName="picture"
+                                             IsChecked="{Binding IsResourceView}" />
                             </StackPanel>
+
+                            <!-- The key to these colours is not here but over the map itself,
+                                 in the far corner: it is read against the map rather than
+                                 against the panel, and this panel may well be shut while the
+                                 picture it explains is the one on screen. -->
 
                             <Border Classes="rule" />
 
@@ -989,6 +1013,43 @@
             </controls:AccordionPanel>
 
         </ScrollViewer>
+
+        <!-- The key to the resource picture, in the corner furthest from the panels and
+             clear of the inset in the corner below it. Shown only with the picture it
+             explains, since these colours mean nothing in the other two.
+
+             Over the map rather than in the View panel, because it is read against the map:
+             a key you have to open a panel to consult is a key you have to remember instead. -->
+        <Border Classes="card legend"
+                Classes.underRate="{Binding ShowFrameRate}"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                IsVisible="{Binding IsResourceView}"
+                ToolTip.Tip="{Binding RendererHelp}">
+
+            <StackPanel Spacing="7">
+                <TextBlock Classes="field" Text="KEY" />
+
+                <ItemsControl ItemsSource="{Binding ResourceKey}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:KeySwatch">
+                            <Grid ColumnDefinitions="12,9,*" Margin="0,0,0,5">
+                                <Border Grid.Column="0"
+                                        Height="12"
+                                        CornerRadius="2"
+                                        BorderThickness="1"
+                                        BorderBrush="#33FFFFFF"
+                                        Background="{Binding Swatch}" />
+                                <TextBlock Grid.Column="2"
+                                           Classes="note"
+                                           VerticalAlignment="Center"
+                                           Text="{Binding Name}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
 
     </Panel>
 

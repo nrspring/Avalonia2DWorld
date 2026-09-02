@@ -7,6 +7,7 @@ using System.IO;
 using System.Text.Json;
 using NWorld.Generation.App.Generation;
 using NWorld.Generation.App.Persistence;
+using Avalonia.Media;
 using NWorld.Map.Interfaces;
 using NWorld.Map.Models;
 using NWorld.Map.ViewModels;
@@ -119,8 +120,28 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// <summary>The same world as height alone. See <see cref="ElevationRenderer"/>.</summary>
     private readonly IMapRenderer _heightView = new ElevationRenderer();
 
-    /// <summary>Which of the two the map is being drawn with.</summary>
-    private bool _height;
+    /// <summary>The same world as what it is worth. See <see cref="ResourceRenderer"/>.</summary>
+    private readonly IMapRenderer _resourceView = new ResourceRenderer();
+
+    /// <summary>Which of the three the map is being drawn with.</summary>
+    private Picture _picture = Picture.Terrain;
+
+    /// <summary>
+    /// The pictures the View panel offers. Private, and never saved: it is which way the map
+    /// is being looked at right now, and a file that opened in a picture the person who saved
+    /// it happened to be checking something in would be a file that opened wrong.
+    /// </summary>
+    private enum Picture
+    {
+        /// <summary>The world as it is made.</summary>
+        Terrain,
+
+        /// <summary>Height alone.</summary>
+        Height,
+
+        /// <summary>What the land is worth.</summary>
+        Resources,
+    }
 
     public MainWindowViewModel()
         : base(
@@ -139,17 +160,17 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// <summary>
     /// Whether the map is drawn as the world it is. What the Terrain radio button binds to.
     /// <para>
-    /// A pair of booleans rather than an enum and a converter, because that is what a radio
-    /// button binds to, and two of them is the whole of the choice.
+    /// A boolean each rather than the enum and a converter, because a boolean is what a radio
+    /// button binds to, and three of them is the whole of the choice.
     /// </para>
     /// </summary>
     public bool IsTerrainView
     {
-        get => !_height;
+        get => _picture == Picture.Terrain;
         set
         {
             if (value)
-                Show(height: false);
+                Show(Picture.Terrain);
         }
     }
 
@@ -157,29 +178,62 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// <inheritdoc cref="IsTerrainView" path="/summary/para"/>
     public bool IsHeightView
     {
-        get => _height;
+        get => _picture == Picture.Height;
         set
         {
             if (value)
-                Show(height: true);
+                Show(Picture.Height);
         }
     }
+
+    /// <summary>
+    /// Whether the map is drawn as what the land is worth. Also what shows the key: the
+    /// colours mean nothing in the other two pictures, so the key is not worth the room there.
+    /// </summary>
+    /// <inheritdoc cref="IsTerrainView" path="/summary/para"/>
+    public bool IsResourceView
+    {
+        get => _picture == Picture.Resources;
+        set
+        {
+            if (value)
+                Show(Picture.Resources);
+        }
+    }
+
+    /// <summary>
+    /// What the colours of the resource picture mean, ready to hang on the panel. Taken from
+    /// the renderer that decides them, so the key cannot drift from the map.
+    /// </summary>
+    public IReadOnlyList<KeySwatch> ResourceKey { get; } =
+        ResourceRenderer.Key
+            .Select(entry => new KeySwatch(
+                entry.Name,
+                new SolidColorBrush(Color.FromRgb(entry.Colour.Red, entry.Colour.Green, entry.Colour.Blue))))
+            .ToList();
 
     /// <summary>
     /// Swaps the renderer under the view. Nothing else changes: not a tile, not the zoom, not
     /// where the view is looking -- this is the same map read a different way, and coming back
     /// from it should land exactly where it left.
     /// </summary>
-    private void Show(bool height)
+    private void Show(Picture picture)
     {
-        if (_height == height)
+        if (_picture == picture)
             return;
 
-        _height = height;
-        Renderer = height ? _heightView : _terrainView;
+        _picture = picture;
+
+        Renderer = picture switch
+        {
+            Picture.Height => _heightView,
+            Picture.Resources => _resourceView,
+            _ => _terrainView,
+        };
 
         OnPropertyChanged(nameof(IsTerrainView));
         OnPropertyChanged(nameof(IsHeightView));
+        OnPropertyChanged(nameof(IsResourceView));
     }
 
     [ObservableProperty]
@@ -481,6 +535,11 @@ public partial class MainWindowViewModel : MapViewModelBase
          "Rivers are the one thing it keeps, in blue, at the height they cross -- so the water " +
          "lightens as it climbs towards its source, and the valley it came down is still a " +
          "valley you can find. Nothing else on the tile shows.@@" +
+         "Resources throws away the height as well. The world goes flat -- black sea, grey " +
+         "land, paler grey rivers -- and every deposit is a solid square of its own colour, " +
+         "with the key below to read them by. Flat on purpose: a deposit is a few tiles wide, " +
+         "and ground drawn as grass and marsh and sand is competing colour at exactly that " +
+         "size. Take the world down to a grey and the squares are the only colour left.@@" +
          "Nothing else moves with it. The zoom, where the view is looking, and every tile on " +
          "the map are exactly as they were, so switching back and forth costs nothing but the " +
          "repaint.@@" +

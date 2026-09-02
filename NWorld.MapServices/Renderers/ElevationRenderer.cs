@@ -134,7 +134,7 @@ namespace NWorld.MapServices.Renderers
             _labelCount = 0;
 
             var (minX, minY, maxX, maxY) = VisibleTiles.For(canvas, tileSize);
-            var run = new Run(canvas, tileSize);
+            var run = new FillRun(canvas, tileSize);
 
             // Walked as a span where the list allows it, for the reason StandardRenderer does
             // the same: on a large map most tiles are off screen, and fetching each one
@@ -169,7 +169,7 @@ namespace NWorld.MapServices.Renderers
         }
 
         private void Fill(
-            ref Run run,
+            ref FillRun run,
             ReadOnlySpan<MapTile> tiles,
             bool labelled,
             int minX,
@@ -182,7 +182,7 @@ namespace NWorld.MapServices.Renderers
         }
 
         private void Add(
-            ref Run run, MapTile? tile, bool labelled, int minX, int minY, int maxX, int maxY)
+            ref FillRun run, MapTile? tile, bool labelled, int minX, int minY, int maxX, int maxY)
         {
             if (tile is null || tile.X < minX || tile.X > maxX || tile.Y < minY || tile.Y > maxY)
                 return;
@@ -286,48 +286,5 @@ namespace NWorld.MapServices.Renderers
             IsAntialias = false,
             Style = SKPaintStyle.Fill,
         };
-
-        /// <summary>
-        /// A row of neighbouring tiles being drawn in one grey, so a plain costs a rect per
-        /// row rather than a rect per tile. The same saving <c>TileRuns</c> makes for the
-        /// standard renderer, which cannot be borrowed here: that one works from the
-        /// placements a batch carries, and this renderer has no batches to put them in.
-        /// </summary>
-        private struct Run(SKCanvas canvas, int tileSize)
-        {
-            private SKPaint? _paint;
-            private int _x;
-            private int _y;
-            private int _length;
-
-            public void Add(int x, int y, SKPaint paint)
-            {
-                if (ReferenceEquals(paint, _paint) && y == _y && x == _x + _length)
-                {
-                    _length++;
-                    return;
-                }
-
-                Flush();
-
-                _paint = paint;
-                _x = x;
-                _y = y;
-                _length = 1;
-            }
-
-            public void Flush()
-            {
-                if (_paint is null || _length == 0)
-                    return;
-
-                canvas.DrawRect(
-                    SKRect.Create(_x * tileSize, _y * tileSize, _length * tileSize, tileSize),
-                    _paint);
-
-                _length = 0;
-                _paint = null;
-            }
-        }
     }
 }
