@@ -652,6 +652,64 @@
             </Border>
 
             <Border Classes="card">
+                <Expander ToolTip.Tip="{Binding RiverHelp}">
+                    <Expander.Header>
+                        <TextBlock Classes="panelTitle" Text="Rivers" />
+                    </Expander.Header>
+
+                    <StackPanel Spacing="10">
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RiverCountHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Rivers" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="24"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding RiverCount}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding RiverCount, StringFormat=\{0:0\}}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RiverWindingHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Winding" />
+                            <Slider Grid.Column="1" Minimum="0" Maximum="100"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Value="{Binding RiverWinding}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding RiverWinding, StringFormat=\{0:0\}%}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,38" ToolTip.Tip="{Binding RiverLengthHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Length" />
+                            <Slider Grid.Column="1" Minimum="5" Maximum="250"
+                                    TickFrequency="5" IsSnapToTickEnabled="True"
+                                    Value="{Binding RiverLength}" />
+                            <TextBlock Grid.Column="2" Classes="reading"
+                                       Text="{Binding RiverLength, StringFormat=\{0:0\}t}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="62,*,8,Auto" ToolTip.Tip="{Binding RiverSeedHelp}">
+                            <TextBlock Grid.Column="0" Classes="dial" Text="Seed" />
+                            <TextBox Grid.Column="1" Text="{Binding RiverSeed}" Watermark="1" />
+                            <Button Grid.Column="3" Classes="quiet" Content="New"
+                                    Command="{Binding NewRiverSeedCommand}"
+                                    ToolTip.Tip="{Binding RiverSeedHelp}" />
+                        </Grid>
+
+                        <TextBlock Classes="note"
+                                   Classes.warn="{Binding HasRiverProblem}"
+                                   Text="{Binding RiverSummary}"
+                                   ToolTip.Tip="{Binding RiverHelp}" />
+
+                        <Border ToolTip.Tip="{Binding RiverHelp}" Background="Transparent">
+                            <Button Classes="primary"
+                                    Content="Add Rivers"
+                                    Command="{Binding BuildRiversCommand}" />
+                        </Border>
+
+                    </StackPanel>
+                </Expander>
+            </Border>
+
+            <Border Classes="card">
                 <Expander ToolTip.Tip="{Binding ViewHelp}">
                     <Expander.Header>
                         <TextBlock Classes="panelTitle" Text="View" />

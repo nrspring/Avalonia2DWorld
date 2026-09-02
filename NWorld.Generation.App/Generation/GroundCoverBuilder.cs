@@ -20,6 +20,14 @@ public enum GroundCover
 
     /// <summary>Sand. Wants the far interior, where the weather does not reach.</summary>
     Desert,
+
+    /// <summary>
+    /// Running water. Unlike the other two it is not spread over the ground that suits it but
+    /// drawn along a route -- see <see cref="RiverBuilder"/> -- and unlike them it is at home
+    /// at any height, since a river comes down off the high ground rather than sitting on the
+    /// low.
+    /// </summary>
+    River,
 }
 
 /// <summary>
@@ -60,7 +68,9 @@ public readonly record struct CoverSettings(
 /// <para>
 /// Neither pass ever writes over the other's ground. There is no hierarchy between a swamp and
 /// a desert the way there is between a hill and a mountain -- one is not simply more of the
-/// other -- so each takes only grass and its own kind.
+/// other -- so each takes only grass and its own kind. A river is left alone by both for the
+/// same reason and one better: it is somewhere the water already is, and a marsh laid over it
+/// would break the one thing a river has to be, which is continuous from source to sea.
 /// </para>
 /// <para>
 /// Which does leave the order they are pressed in mattering, for the ground both of them want:

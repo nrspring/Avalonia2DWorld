@@ -256,6 +256,30 @@ public partial class MainWindowViewModel : MapViewModelBase
         nameof(DesertSummary), nameof(HasDesertProblem))]
     private string _coverSeed = "1";
 
+    /// <summary>How many rivers to run down to the sea.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RiverSummary))]
+    private double _riverCount = 6;
+
+    /// <summary>
+    /// How much the rivers wander on their way down, as a percentage. High by default: a
+    /// river that takes the shortest way to the water is a canal.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RiverSummary))]
+    private double _riverWinding = 70;
+
+    /// <summary>The shortest river worth drawing, in tiles.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RiverSummary))]
+    private double _riverLength = 40;
+
+    /// <inheritdoc cref="ContinentSeed"/>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(BuildRiversCommand))]
+    [NotifyPropertyChangedFor(nameof(RiverSummary), nameof(HasRiverProblem))]
+    private string _riverSeed = "1";
+
     /// <summary>
     /// Whether the land carries its elevation as a number drawn over each tile. The sea does
     /// not -- see <see cref="IsWater"/>.
@@ -450,6 +474,63 @@ public partial class MainWindowViewModel : MapViewModelBase
          "It takes no tile off the coverage -- the same amount of swamp arrives either way, " +
          "and no patch is drawn any bigger. But patches heaped together run into their " +
          "neighbours, so the pieces you end up looking at are fewer and broader.").Replace("@@", "\n\n");
+
+    /// <summary>What the Rivers panel is for.</summary>
+    public string RiverHelp =>
+        ("Run rivers down off the hills to the sea.@@" +
+         "A river is what a tile is made of and not how high it stands: it takes the elevation " +
+         "of the ground it replaces, so nothing here digs a channel, moves a coast or touches " +
+         "a range. Press it over a finished world and the world is as it was, with water on " +
+         "it.@@" +
+         "They start in the hills rather than the mountains. A river takes the height of what " +
+         "it crosses, and a range is not even ground -- one started on a crag comes out with " +
+         "a twenty-unit step across its own width. The foot of a range is where the water " +
+         "gathers anyway.@@" +
+         "Rivers run into each other: one that reaches a river already drawn stops there and " +
+         "becomes its tributary, so what you get is systems rather than parallel lines.@@" +
+         "Like the islands, a press adds to what is there rather than replacing it. Press " +
+         "again for another set and it will find country the last one left alone, joining " +
+         "what it meets; keep pressing and it will eventually tell you there is no room " +
+         "left.").Replace("@@", "\n\n");
+
+    /// <summary>The river-count tooltip.</summary>
+    public string RiverCountHelp =>
+        ("How many rivers to add to whatever is already there.@@" +
+         "A target rather than a promise. Sources are kept well apart -- from each other, so " +
+         "they do not all start on the same hill, and from the rivers already on the map, so " +
+         "a second press works into country the first one left alone. One that cannot make a " +
+         "river as long as you have asked for is passed over too.@@" +
+         "So a bare world gives you the number you ask for and a well-watered one gives you " +
+         "fewer. The line below says which you got.@@" +
+         "Count them on the map by their mouths and not by their lines: two rivers that meet " +
+         "are still two.").Replace("@@", "\n\n");
+
+    /// <summary>The winding tooltip.</summary>
+    public string RiverWindingHelp =>
+        ("How much a river wanders on its way down.@@" +
+         "At nothing it takes the straightest way to the water that does not climb, which " +
+         "reads as a canal. Turn it up and it follows the lie of the country instead, bending " +
+         "well out of its way and coming back -- longer, slower, and the shape a river " +
+         "actually has.@@" +
+         "It never buys a bend by climbing. Going uphill is dear enough to outweigh the whole " +
+         "of this dial, so a wandering river still falls the whole way down.").Replace("@@", "\n\n");
+
+    /// <summary>The river-length tooltip.</summary>
+    public string RiverLengthHelp =>
+        ("The shortest river worth drawing, in tiles.@@" +
+         "Anything shorter is a stream, and a source that can only manage one is passed over " +
+         "for another further inland. Raise it for a few great rivers; lower it to let the " +
+         "short coastal ones in.@@" +
+         "Measured along the water rather than across the map, so a winding river clears the " +
+         "bar from closer to the sea than a straight one does.").Replace("@@", "\n\n");
+
+    /// <inheritdoc cref="ContinentSeedHelp"/>
+    public string RiverSeedHelp =>
+        ("Any whole number. The same seed with the same settings runs the same rivers, every " +
+         "time.@@" +
+         "It sets the lie of the country the rivers wind through, so changing it moves every " +
+         "bend without moving a single source: the sources come off the relief, which this " +
+         "does not touch.").Replace("@@", "\n\n");
 
     /// <inheritdoc cref="ContinentSeedHelp"/>
     public string CoverSeedHelp =>
@@ -934,6 +1015,7 @@ public partial class MainWindowViewModel : MapViewModelBase
             cover[i] =
                 ground.ComponentType == MapRenderComponentConstants.Swamp ? GroundCover.Swamp :
                 ground.ComponentType == MapRenderComponentConstants.Desert ? GroundCover.Desert :
+                ground.ComponentType == MapRenderComponentConstants.Water ? GroundCover.River :
                 GroundCover.Grass;
         }
 
@@ -1040,6 +1122,114 @@ public partial class MainWindowViewModel : MapViewModelBase
         CoverSeed = NewSeed();
 
     /// <summary>
+    /// The line under the river controls: what the next run will do, or what is stopping it.
+    /// </summary>
+    public string RiverSummary
+    {
+        get
+        {
+            if (Tiles is null)
+                return "Make a map in Start first.";
+
+            if (_land is null)
+                return "Build some land first.";
+
+            if (!TryReadSeed(RiverSeed, out _))
+                return "Seed: any whole number.";
+
+            // Rivers rise in the hills, so a world with none has nowhere to start one. Worth
+            // saying outright rather than letting the button do nothing quietly.
+            if (HillTiles() == 0)
+                return "No hills to rise in -- raise some first.";
+
+            var rivers = (int)RiverCount;
+
+            if (rivers <= 0)
+                return "No rivers.";
+
+            // What the last press managed, until a dial moves and it is a prediction again.
+            // Worth saying because neither shortfall is obvious from the map: the length dial
+            // may be asking for more than the country can carry, and a map that already has
+            // rivers on it has less room left for another set.
+            if (_riversMade is { } ran)
+            {
+                return ran == rivers
+                    ? $"Added {ran:N0} rivers. Press again for another set."
+                    : ran == 0
+                        ? $"No room for another river {(int)RiverLength:N0} tiles long."
+                        : $"Added {ran:N0} of {rivers:N0} -- no room for the rest.";
+            }
+
+            return $"Adds up to {rivers:N0} more rivers, {(int)RiverLength:N0} tiles or longer, down to the sea.";
+        }
+    }
+
+    /// <summary>
+    /// How many rivers the last run actually managed, or null if a dial has moved since -- at
+    /// which point the line under the button goes back to saying what the next run will try.
+    /// </summary>
+    private int? _riversMade;
+
+    // Any dial moving makes the last run's tally stale. Written out rather than folded into
+    // one handler because the toolkit generates one of these per property.
+    partial void OnRiverCountChanged(double value) => _riversMade = null;
+
+    partial void OnRiverWindingChanged(double value) => _riversMade = null;
+
+    partial void OnRiverLengthChanged(double value) => _riversMade = null;
+
+    partial void OnRiverSeedChanged(string value) => _riversMade = null;
+
+    /// <inheritdoc cref="HasSizeProblem"/>
+    public bool HasRiverProblem => !CanBuildRivers() || HillTiles() == 0;
+
+    /// <summary>How much of the map is hill, which is the only ground a river may rise on.</summary>
+    private long HillTiles() =>
+        CountTiles(static elevation => elevation is >= Elevations.HillsFrom and <= Elevations.HillsTo);
+
+    /// <summary>
+    /// Runs another set of rivers down off the hills and puts the result on screen.
+    /// <para>
+    /// Cover only, like the swamps and the deserts: the land and the relief both come through
+    /// exactly as they were, and a river takes the height of the tile it runs over.
+    /// </para>
+    /// <para>
+    /// Added rather than replacing, like the islands and unlike the other cover passes, so
+    /// pressing it twice leaves two sets -- and the second sees the first's rivers, keeping
+    /// its sources clear of them and running into them where it meets them.
+    /// </para>
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanBuildRivers))]
+    private void BuildRivers()
+    {
+        if (_map is not { } map || _land is null || !TryReadSeed(RiverSeed, out var seed))
+            return;
+
+        Remember();
+
+        var relief = CurrentRelief(map);
+
+        var cover = RiverBuilder.Add(
+            map.Width, map.Height, relief, CurrentCover(map),
+            new RiverSettings((int)RiverCount, RiverWinding / 100, (int)RiverLength, seed),
+            out var made);
+
+        Rebuild(map, relief, cover);
+
+        _riversMade = made;
+        OnPropertyChanged(nameof(RiverSummary));
+    }
+
+    /// <summary>Whether there is land to run rivers over, and a seed to run them with.</summary>
+    private bool CanBuildRivers() =>
+        _map is not null && _land is not null && TryReadSeed(RiverSeed, out _);
+
+    /// <summary>Fills the river seed box with a new one.</summary>
+    [RelayCommand]
+    private void NewRiverSeed() =>
+        RiverSeed = NewSeed();
+
+    /// <summary>
     /// Writes the map and the current settings to <paramref name="stream"/>.
     /// <para>
     /// Takes a stream rather than a path because choosing the file is the window's job: a
@@ -1076,6 +1266,10 @@ public partial class MainWindowViewModel : MapViewModelBase
                 PatchSize = PatchSize,
                 CoverClustering = CoverClustering,
                 CoverSeed = CoverSeed,
+                RiverCount = RiverCount,
+                RiverWinding = RiverWinding,
+                RiverLength = RiverLength,
+                RiverSeed = RiverSeed,
                 TileSize = Options.TileSize,
                 OriginX = Options.OriginX,
                 OriginY = Options.OriginY,
@@ -1159,6 +1353,10 @@ public partial class MainWindowViewModel : MapViewModelBase
         DesertCoverage = settings.DesertCoverage ?? DesertCoverage;
         PatchSize = settings.PatchSize ?? PatchSize;
         CoverClustering = settings.CoverClustering ?? CoverClustering;
+        RiverCount = settings.RiverCount ?? RiverCount;
+        RiverWinding = settings.RiverWinding ?? RiverWinding;
+        RiverLength = settings.RiverLength ?? RiverLength;
+        RiverSeed = settings.RiverSeed ?? RiverSeed;
         CoverSeed = settings.CoverSeed ?? CoverSeed;
 
         // The size boxes describe the next map to be made, and the one just opened is the
@@ -1303,6 +1501,11 @@ public partial class MainWindowViewModel : MapViewModelBase
             // and desert are lowland covers, and ground raised out of the lowlands loses
             // whatever was on it. A pass may hand in a cover for a tile that has since become
             // a mountain -- the terrain passes do exactly that -- and this is where it goes.
+            //
+            // Rivers need no exception here, which is deliberate and is why RiverBuilder keeps
+            // them off the mountains: every tile of a river is lowland when it is drawn, so a
+            // river only ever meets this rule after a range has been raised across one -- and
+            // then the range should take it, exactly as it takes a marsh.
             var ground = Elevations.IsLowland(elevation) ? cover[index] : GroundCover.Grass;
 
             return BuildLandTile(coordinate, elevation, ground);
@@ -1513,20 +1716,24 @@ public partial class MainWindowViewModel : MapViewModelBase
     }
 
     /// <summary>
-    /// Whether a tile is sea, and so has no number worth writing on it: the water is all at
-    /// one level by definition, and a map of open ocean covered in zeroes hides the coastline
-    /// that is the only thing the numbers are there to read against.
+    /// Whether a tile is open sea, and so has no number worth writing on it: the ocean is all
+    /// at one level by definition, and a map of it covered in zeroes hides the coastline that
+    /// is the only thing the numbers are there to read against.
     /// <para>
     /// Asked of the ground drawn on the tile rather than of its elevation. Elevation is the
     /// thing being labelled, and a rule that read it would be deciding what to show from the
-    /// very number in question -- a lake held above sea level would go unlabelled, and any
-    /// land a later pass leaves at zero would be taken for sea.
+    /// very number in question -- any land a later pass leaves at zero would be taken for sea.
+    /// </para>
+    /// <para>
+    /// The deep water only, and not the wadeable kind beside it, because that is what a river
+    /// is drawn as. A river takes the height of the ground it runs over and is the one water
+    /// on the map that is not all at one level -- so its number is worth reading, and is in
+    /// fact the number somebody checking a river runs downhill would want most.
     /// </para>
     /// </summary>
     private static bool IsWater(MapTile tile) =>
         tile.MapRenderComponents.TryGetValue(RenderComponentLayers.BaseGround, out var ground) &&
-        (ground.ComponentType == MapRenderComponentConstants.Water ||
-         ground.ComponentType == MapRenderComponentConstants.DeepWater);
+        ground.ComponentType == MapRenderComponentConstants.DeepWater;
 
     /// <summary>
     /// Whether a map carries elevation labels at all.
@@ -1568,6 +1775,12 @@ public partial class MainWindowViewModel : MapViewModelBase
         {
             GroundCover.Swamp => MapRenderComponentConstants.Swamp,
             GroundCover.Desert => MapRenderComponentConstants.Desert,
+
+            // Open, wadeable water, which is what the shallows were already drawn as and what
+            // a river is: the same surface as the sea in a different colour, so a mouth is one
+            // unbroken sheet across the coastline rather than two textures meeting at it.
+            GroundCover.River => MapRenderComponentConstants.Water,
+
             _ => MapRenderComponentConstants.Grass,
         });
         Label(tile);

@@ -44,6 +44,11 @@ public sealed record MapSettings
     public double? CoverClustering { get; init; }
     public string? CoverSeed { get; init; }
 
+    public double? RiverCount { get; init; }
+    public double? RiverWinding { get; init; }
+    public double? RiverLength { get; init; }
+    public string? RiverSeed { get; init; }
+
     /// <summary>Zoom, as a tile size in pixels, and where the view was looking.</summary>
     public int? TileSize { get; init; }
 
