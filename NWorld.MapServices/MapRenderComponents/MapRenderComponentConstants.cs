@@ -26,6 +26,13 @@ namespace NWorld.MapServices.MapRenderComponents
         public static Guid Selected { get; } = new Guid("77777777-7777-7777-7777-777777777777");
         public static Guid Range { get; } = new Guid("88888888-8888-8888-8888-888888888888");
 
+        //Resource types
+        public static Guid Iron { get; } = new Guid("AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA");
+        public static Guid Wood { get; } = new Guid("BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB");
+        public static Guid Oil { get; } = new Guid("CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC");
+        public static Guid Sulphur { get; } = new Guid("DDDDDDDD-DDDD-DDDD-DDDD-DDDDDDDDDDDD");
+        public static Guid Stone { get; } = new Guid("EEEEEEEE-EEEE-EEEE-EEEE-EEEEEEEEEEEE");
+
         //Overlay types
         public static Guid ElevationLabel { get; } = new Guid("99999999-9999-9999-9999-999999999999");
     }
