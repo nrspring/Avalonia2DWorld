@@ -56,6 +56,20 @@ public partial class MainWindowViewModel : MapViewModelBase
     private const string DoubleBreak = "\n\n";
 
     /// <summary>
+    /// The lowest a tile may be edited to: the lowest hill.
+    /// <para>
+    /// Hand editing shapes relief, and the floor is what keeps it to that. Below this are the
+    /// flats and the sea, which is to say the coastline, and the coastline is drawn from a mask
+    /// and a seed by the Base Land panel -- see the remarks on <see cref="EditElevation"/>.
+    /// </para>
+    /// <para>
+    /// Written as the first hill rather than as two, because that is what it means: the floor
+    /// moves with the bands if the bands ever move.
+    /// </para>
+    /// </summary>
+    private const int LowestEditableElevation = Elevations.HillsFrom;
+
+    /// <summary>
     /// How many maps back undo can go.
     /// <para>
     /// Whole maps, tiles and all, rather than the settings that produced them or the land
@@ -93,6 +107,12 @@ public partial class MainWindowViewModel : MapViewModelBase
 
     private TileCoordinate? _hovered;
     private TileCoordinate? _selected;
+
+    /// <summary>
+    /// Whether the entry on top of the history is one a tile edit filed, and so already stands
+    /// for the run of edits in progress. See <see cref="RememberTileEdit"/>.
+    /// </summary>
+    private bool _editing;
 
     /// <summary>
     /// Whether the tiles of <see cref="_map"/> carry elevation labels, which is not the same
@@ -235,6 +255,109 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(IsHeightView));
         OnPropertyChanged(nameof(IsResourceView));
     }
+
+    /// <summary>
+    /// Whether the Edit Tiles panel is open, which is the whole of the editing mode: while it
+    /// is, a click on the map changes the tile under it instead of selecting it.
+    /// <para>
+    /// Two-way against the panel's own expander rather than a separate switch inside it. The
+    /// accordion already closes one panel when another opens, so an open panel is a mode
+    /// nobody can leave running by accident -- opening Resources to scatter something puts the
+    /// click back to selecting, which is what somebody who has stopped editing tiles meant to
+    /// happen.
+    /// </para>
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TileEditSummary))]
+    private bool _isEditingTiles;
+
+    /// <summary>Which way a click moves the ground under it.</summary>
+    private TileTool _tool = TileTool.Raise;
+
+    /// <summary>
+    /// What the Edit Tiles panel does to the tile that is clicked. One at a time by
+    /// construction: a click has one outcome, and a panel that let you arm two would have to
+    /// decide which of them won.
+    /// </summary>
+    private enum TileTool
+    {
+        /// <summary>A step up, as far as the highest mountain.</summary>
+        Raise,
+
+        /// <summary>A step down, as far as the sea.</summary>
+        Lower,
+    }
+
+    /// <summary>
+    /// What the last click on a tile did, or null if nothing has been clicked since the tool
+    /// was last changed. What <see cref="TileEditSummary"/> says when there is something to
+    /// report; before the first click it falls back to what the tool is about to do.
+    /// </summary>
+    private string? _tileEditReport;
+
+    /// <summary>Whether <see cref="_tileEditReport"/> is a refusal rather than a change.</summary>
+    private bool _tileEditRefused;
+
+    /// <summary>
+    /// Whether a click raises the tile under it. What the Raise radio button binds to.
+    /// <para>
+    /// A boolean each rather than the enum and a converter, for the reason the choice of
+    /// picture is one: a boolean is what a radio button binds to.
+    /// </para>
+    /// </summary>
+    public bool IsRaiseTool
+    {
+        get => _tool == TileTool.Raise;
+        set
+        {
+            if (value)
+                Arm(TileTool.Raise);
+        }
+    }
+
+    /// <summary>Whether a click lowers the tile under it.</summary>
+    /// <inheritdoc cref="IsRaiseTool" path="/summary/para"/>
+    public bool IsLowerTool
+    {
+        get => _tool == TileTool.Lower;
+        set
+        {
+            if (value)
+                Arm(TileTool.Lower);
+        }
+    }
+
+    /// <summary>
+    /// Picks up a tool. The note goes back to saying what the new tool will do, because what
+    /// it says at the moment is what the old one did.
+    /// </summary>
+    private void Arm(TileTool tool)
+    {
+        if (_tool == tool)
+            return;
+
+        _tool = tool;
+        _tileEditReport = null;
+        _tileEditRefused = false;
+
+        OnPropertyChanged(nameof(IsRaiseTool));
+        OnPropertyChanged(nameof(IsLowerTool));
+        OnPropertyChanged(nameof(TileEditSummary));
+        OnPropertyChanged(nameof(HasTileEditProblem));
+    }
+
+    /// <summary>
+    /// What the last click did, or what the next one will do. The line under the tools.
+    /// </summary>
+    public string TileEditSummary =>
+        _map is null
+            ? "No map yet -- make one in the Start panel."
+            : _tileEditReport ?? (_tool == TileTool.Raise
+                ? "Click a tile to raise it one step."
+                : "Click a tile to lower it one step.");
+
+    /// <summary>Whether that line is a complaint, and so drawn in the warning colour.</summary>
+    public bool HasTileEditProblem => _map is null || _tileEditRefused;
 
     [ObservableProperty]
     private string _title = "NWorld Generation";
@@ -516,6 +639,35 @@ public partial class MainWindowViewModel : MapViewModelBase
         "islands each file the one they replace. Ctrl+Z does the same.\n\n" +
         "Whole maps are kept, so what comes back is exactly what was there -- not a rebuild " +
         "from the settings, which have most likely moved on since.";
+
+    /// <summary>What the Edit Tiles panel is for.</summary>
+    public string TileEditHelp =>
+        ("Shape the land a tile at a time, by hand, where a pass has left something not quite " +
+         "right -- a gap in a ridge, a saddle in the wrong place, a summit a step short.@@" +
+         "While this panel is open a click on the map edits the tile under it instead of " +
+         "selecting it. Closing the panel, or opening any other, puts the click back to " +
+         "selecting: there is no separate switch to remember to turn off.@@" +
+         "Relief only. Land, never the sea, and never below " +
+         $"{LowestEditableElevation} -- so nothing here moves a coastline or flattens the " +
+         "flats. Those come from a mask and a seed in the Base Land panel, and doing them a " +
+         "tile at a time would be a second and much worse way of doing the same thing.@@" +
+         "What a pass would have decided about the tile is decided again around its new " +
+         "height: ground taken up past the hills loses its marsh or its sand, and a deposit " +
+         "that cannot sit at the new height goes with it.").Replace("@@", "\n\n");
+
+    /// <summary>The tool choice's tooltip.</summary>
+    public string TileToolHelp =>
+        ("Which way a click moves the ground: one elevation at a time, between " +
+         $"{LowestEditableElevation} and {Elevations.MountainsTo}, which is as low and as high " +
+         "as hand editing goes.@@" +
+         "One tool at a time, and one of them always held. A click that would go past either " +
+         "end says so and changes nothing, and so does a click on the sea -- there is no " +
+         "ground there to raise.@@" +
+         "A run of clicks is one undo, not one each. The history is only " +
+         $"{UndoDepth} maps deep, and filing every click would mean five touch-ups threw away " +
+         "the build they were touching up -- so Ctrl+Z puts the map back as it was when this " +
+         "run of editing started. Running a pass, opening a file or making a map ends the run, " +
+         "and the next click starts a new one.").Replace("@@", "\n\n");
 
     /// <summary>What the View panel is for.</summary>
     public string ViewHelp =>
@@ -1405,19 +1557,28 @@ public partial class MainWindowViewModel : MapViewModelBase
         var cover = new GroundCover[tiles.Count];
 
         for (var i = 0; i < cover.Length; i++)
-        {
-            if (!tiles[i].MapRenderComponents.TryGetValue(RenderComponentLayers.BaseGround, out var ground))
-                continue;
-
-            cover[i] =
-                ground.ComponentType == MapRenderComponentConstants.Swamp ? GroundCover.Swamp :
-                ground.ComponentType == MapRenderComponentConstants.Desert ? GroundCover.Desert :
-                ground.ComponentType == MapRenderComponentConstants.Water ? GroundCover.River :
-                ground.ComponentType == MapRenderComponentConstants.ShallowWater ? GroundCover.Shallow :
-                GroundCover.Grass;
-        }
+            cover[i] = CoverOf(tiles[i]);
 
         return cover;
+    }
+
+    /// <summary>
+    /// What one tile is made of, read back off the ground it is drawn with. The single-tile
+    /// half of <see cref="CurrentCover"/>, split out because editing one tile needs to know
+    /// what it was before it is given a new ground -- and two copies of this mapping is two
+    /// chances for the edit and the rebuild to disagree about what a marsh is.
+    /// </summary>
+    private static GroundCover CoverOf(MapTile tile)
+    {
+        if (!tile.MapRenderComponents.TryGetValue(RenderComponentLayers.BaseGround, out var ground))
+            return GroundCover.Grass;
+
+        return
+            ground.ComponentType == MapRenderComponentConstants.Swamp ? GroundCover.Swamp :
+            ground.ComponentType == MapRenderComponentConstants.Desert ? GroundCover.Desert :
+            ground.ComponentType == MapRenderComponentConstants.Water ? GroundCover.River :
+            ground.ComponentType == MapRenderComponentConstants.ShallowWater ? GroundCover.Shallow :
+            GroundCover.Grass;
     }
 
     /// <summary>
@@ -1431,20 +1592,24 @@ public partial class MainWindowViewModel : MapViewModelBase
         var deposits = new TileResource[tiles.Count];
 
         for (var i = 0; i < deposits.Length; i++)
-        {
-            if (!tiles[i].MapRenderComponents.TryGetValue(RenderComponentLayers.Resource, out var deposit))
-                continue;
-
-            deposits[i] =
-                deposit.ComponentType == MapRenderComponentConstants.Iron ? TileResource.Iron :
-                deposit.ComponentType == MapRenderComponentConstants.Wood ? TileResource.Wood :
-                deposit.ComponentType == MapRenderComponentConstants.Oil ? TileResource.Oil :
-                deposit.ComponentType == MapRenderComponentConstants.Sulphur ? TileResource.Sulphur :
-                deposit.ComponentType == MapRenderComponentConstants.Stone ? TileResource.Stone :
-                TileResource.None;
-        }
+            deposits[i] = ResourceOf(tiles[i]);
 
         return deposits;
+    }
+
+    /// <inheritdoc cref="CoverOf"/>
+    private static TileResource ResourceOf(MapTile tile)
+    {
+        if (!tile.MapRenderComponents.TryGetValue(RenderComponentLayers.Resource, out var deposit))
+            return TileResource.None;
+
+        return
+            deposit.ComponentType == MapRenderComponentConstants.Iron ? TileResource.Iron :
+            deposit.ComponentType == MapRenderComponentConstants.Wood ? TileResource.Wood :
+            deposit.ComponentType == MapRenderComponentConstants.Oil ? TileResource.Oil :
+            deposit.ComponentType == MapRenderComponentConstants.Sulphur ? TileResource.Sulphur :
+            deposit.ComponentType == MapRenderComponentConstants.Stone ? TileResource.Stone :
+            TileResource.None;
     }
 
     /// <summary>
@@ -2006,6 +2171,17 @@ public partial class MainWindowViewModel : MapViewModelBase
         var state = _history[^1];
         _history.RemoveAt(_history.Count - 1);
 
+        // Whatever run of tile edits that entry stood for has been undone with it, so the next
+        // click is the start of a fresh one and files an entry of its own -- and the line in
+        // the Edit Tiles panel goes back to saying what the tool will do, since what it says
+        // at the moment is what a tile that has just been put back was.
+        _editing = false;
+        _tileEditReport = null;
+        _tileEditRefused = false;
+
+        OnPropertyChanged(nameof(TileEditSummary));
+        OnPropertyChanged(nameof(HasTileEditProblem));
+
         // A map of a different size is a different world; the view has nowhere sensible to
         // stay, so it goes back to the corner. Same size, and it stays where it was, which
         // is what makes undoing a build you were watching worth anything.
@@ -2045,10 +2221,22 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// editing this one, so what is filed here stops changing the moment it is filed.
     /// </para>
     /// </summary>
-    private void Remember()
+    /// <param name="state">
+    /// What to file, for the caller that has nothing to replace the map with. An edit to a
+    /// few tiles changes the live map in place, so filing that map would file something that
+    /// is about to change; it hands in a <see cref="TileMap.Snapshot"/> instead. Left null by
+    /// every pass that builds a new map, which is most of them.
+    /// </param>
+    private void Remember(TileMap? state = null)
     {
-        if (_map is not { } map)
+        if ((state ?? _map) is not { } map)
             return;
+
+        // A snapshot means a tile edit, and a tile edit opens a run that later clicks join
+        // rather than file entries of their own; anything else closes it. Set here rather
+        // than at the two call sites so that no future pass can file an entry and leave the
+        // run looking as though it is still the one on top of the history.
+        _editing = state is not null;
 
         _history.Add(new MapState(map, _land, _hovered, _selected));
 
@@ -2237,6 +2425,8 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(SulphurSummary));
         OnPropertyChanged(nameof(StoneSummary));
         OnPropertyChanged(nameof(HasResourceProblem));
+        OnPropertyChanged(nameof(TileEditSummary));
+        OnPropertyChanged(nameof(HasTileEditProblem));
     }
 
     /// <summary>
@@ -2279,6 +2469,16 @@ public partial class MainWindowViewModel : MapViewModelBase
         if (_map is not { } map || coordinate is not { } clicked)
             return;
 
+        // The Edit Tiles panel takes the click while it is open -- see IsEditingTiles. The
+        // selection is left exactly where it was rather than moved to the tile being edited:
+        // raising a ridge is a run of clicks along it, and a selection mark following the
+        // pointer through that is a mark nobody asked to move.
+        if (IsEditingTiles)
+        {
+            EditElevation(map, clicked, _tool == TileTool.Raise ? 1 : -1);
+            return;
+        }
+
         var next = _selected == clicked ? (TileCoordinate?)null : clicked;
 
         map.Edit(editor =>
@@ -2292,6 +2492,129 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         _selected = next;
         Tiles = map.Tiles;
+    }
+
+    /// <summary>
+    /// Moves one tile's ground up or down a step and puts it right: the height, the ground it
+    /// is drawn with, what it is worth, and its label.
+    /// <para>
+    /// Relief only. It will not take a tile below <see cref="LowestEditableElevation"/> and it
+    /// will not touch the sea, so no click here moves a coastline: what is land stays land,
+    /// what is sea stays sea, and the flats a land pass laid down stay flat. Drawing coastlines
+    /// is the Base Land panel's job, and it does it from a mask and a seed -- a tool that could
+    /// do it a tile at a time would be a second and much worse way of doing the same thing,
+    /// and it is why the land mask the generators build from needs no telling here.
+    /// </para>
+    /// <para>
+    /// An edit to the live map rather than a rebuild of it, which is what the generator passes
+    /// do. A rebuild is the right shape for a pass that decides every tile and the wrong one
+    /// for a click: it is a fresh tile object for each of a million, and paying that per click
+    /// would make the tool unusable on exactly the large maps somebody would want to touch up
+    /// by hand.
+    /// </para>
+    /// <para>
+    /// Which is why undo is handed a <see cref="TileMap.Snapshot"/> and not the map. Every
+    /// other caller of <see cref="Remember"/> replaces the map outright, so what it files stops
+    /// changing; this one does not, and filing the live map would file the very map that is
+    /// about to change under it.
+    /// </para>
+    /// </summary>
+    private void EditElevation(TileMap map, TileCoordinate coordinate, int step)
+    {
+        if (map[coordinate] is not { } tile)
+            return;
+
+        // Asked of the height rather than of the ground drawn on it, so that a river -- water
+        // to look at, and land at whatever height it runs over -- is ground this can shape,
+        // the same as the bank beside it.
+        if (tile.Elevation <= Elevations.Sea)
+        {
+            ReportEdit(coordinate, "is sea. Only land can be raised or lowered.", refused: true);
+            return;
+        }
+
+        var elevation = tile.Elevation + step;
+
+        // Both ends refuse rather than clamp, and refuse before anything is filed: a click that
+        // changes nothing must not spend a history slot, and a Lower that quietly stopped at the
+        // floor would look like a tool that had stopped working.
+        if (elevation < LowestEditableElevation)
+        {
+            ReportEdit(coordinate, $"cannot go below {LowestEditableElevation}.", refused: true);
+            return;
+        }
+
+        if (elevation > Elevations.MountainsTo)
+        {
+            ReportEdit(coordinate, $"is as high as ground goes, at {Elevations.MountainsTo}.", refused: true);
+            return;
+        }
+
+        // Rebuild's rule rather than this method's: swamp and desert are lowland covers, and
+        // ground raised past the hills loses whatever was on it.
+        var cover = CoverOf(tile);
+
+        if (!Elevations.IsLowland(elevation))
+            cover = GroundCover.Grass;
+
+        // And the same question Rebuild asks of a deposit, against the ground the tile is about
+        // to have rather than the one it had: an oil field does not survive being made a
+        // mountain, and a wood does not survive being made a desert.
+        var kept = ResourceBuilder.CanHold(ResourceOf(tile), elevation, cover);
+
+        RememberTileEdit(map);
+
+        map.Edit(editor => editor.Update(coordinate, edited =>
+        {
+            edited.Elevation = elevation;
+
+            Ground(edited, GroundOf(cover));
+
+            if (!kept)
+                edited.MapRenderComponents.Remove(RenderComponentLayers.Resource);
+
+            // Last, and after the ground: the label is written from the elevation the tile has
+            // just been given, and whether it is written at all is asked of the ground it has
+            // just been drawn with.
+            Label(edited);
+        }));
+
+        Tiles = map.Tiles;
+
+        ReportEdit(coordinate, $"is at {elevation}.", refused: false);
+    }
+
+    /// <summary>
+    /// Files the map as it stands before a tile edit, unless the last thing filed was the last
+    /// tile edit's map.
+    /// <para>
+    /// Because a click is small and the history is five deep. Filing one map per click means
+    /// five clicks along a ridge throw away the continent build that raised it, and undo comes
+    /// back to a coastline five steps of one tile from where it went in -- an undo that cannot
+    /// reach past the last few seconds of touching up is not the undo the button describes.
+    /// So a run of edits is one entry: the map as it was when the run started, which is where
+    /// a single Ctrl+Z puts it back. A build, a load or a new map ends the run by filing its
+    /// own entry, and the next click starts a fresh one.
+    /// </para>
+    /// </summary>
+    private void RememberTileEdit(TileMap map)
+    {
+        if (_editing)
+            return;
+
+        Remember(map.Snapshot());
+    }
+
+    /// <summary>
+    /// Says what just happened to a tile, in the line under the tools.
+    /// </summary>
+    private void ReportEdit(TileCoordinate coordinate, string outcome, bool refused)
+    {
+        _tileEditReport = $"({coordinate.X}, {coordinate.Y}) {outcome}";
+        _tileEditRefused = refused;
+
+        OnPropertyChanged(nameof(TileEditSummary));
+        OnPropertyChanged(nameof(HasTileEditProblem));
     }
 
     /// <summary>
@@ -2414,18 +2737,7 @@ public partial class MainWindowViewModel : MapViewModelBase
     {
         var tile = new MapTile { X = coordinate.X, Y = coordinate.Y, Elevation = elevation };
 
-        Ground(tile, cover switch
-        {
-            GroundCover.Swamp => MapRenderComponentConstants.Swamp,
-            GroundCover.Desert => MapRenderComponentConstants.Desert,
-
-            // Open, wadeable water, which is what the shallows were already drawn as and what
-            // a river is: the same surface as the sea in a different colour, so a mouth is one
-            // unbroken sheet across the coastline rather than two textures meeting at it.
-            GroundCover.River => MapRenderComponentConstants.Water,
-
-            _ => MapRenderComponentConstants.Grass,
-        });
+        Ground(tile, GroundOf(cover));
 
         // On its own layer over the ground, which is what lets it be drawn without the tile
         // having to stop being marsh or sand to carry it.
@@ -2445,6 +2757,23 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         return tile;
     }
+
+    /// <summary>
+    /// Which ground a land cover is drawn with. The other direction of <see cref="CoverOf"/>,
+    /// and shared by the pass that builds a tile and the edit that changes one.
+    /// </summary>
+    private static Guid GroundOf(GroundCover cover) => cover switch
+    {
+        GroundCover.Swamp => MapRenderComponentConstants.Swamp,
+        GroundCover.Desert => MapRenderComponentConstants.Desert,
+
+        // Open, wadeable water, which is what the shallows were already drawn as and what
+        // a river is: the same surface as the sea in a different colour, so a mouth is one
+        // unbroken sheet across the coastline rather than two textures meeting at it.
+        GroundCover.River => MapRenderComponentConstants.Water,
+
+        _ => MapRenderComponentConstants.Grass,
+    };
 
     /// <summary>
     /// Puts a ground on a tile, with the tile's elevation alongside it -- which is what draws

@@ -956,6 +956,43 @@
                     </Expander>
                 </Border>
 
+                <!-- The one panel that is a mode rather than a set of dials: while it is open
+                     a click on the map edits the tile under it. IsExpanded is bound both ways
+                     so the view model knows, which means the accordion closing this card when
+                     another opens is also what disarms the tool: there is no second switch
+                     that could disagree with the panel about whether editing is on. -->
+                <Border Classes="card">
+                    <Expander IsExpanded="{Binding IsEditingTiles, Mode=TwoWay}"
+                              ToolTip.Tip="{Binding TileEditHelp}">
+                        <Expander.Header>
+                            <TextBlock Classes="panelTitle" Text="Edit Tiles" />
+                        </Expander.Header>
+
+                        <StackPanel Spacing="8">
+
+                            <TextBlock Classes="field" Text="TOOL" />
+
+                            <StackPanel Spacing="6" ToolTip.Tip="{Binding TileToolHelp}">
+                                <RadioButton Content="Raise elevation"
+                                             GroupName="tileTool"
+                                             IsChecked="{Binding IsRaiseTool}" />
+                                <RadioButton Content="Lower elevation"
+                                             GroupName="tileTool"
+                                             IsChecked="{Binding IsLowerTool}" />
+                            </StackPanel>
+
+                            <!-- What the last click did, or what the next one will do. The one
+                                 piece of feedback the map itself cannot give: a tile going from
+                                 4 to 5 is a shade of grey unless the numbers are switched on. -->
+                            <TextBlock Classes="note"
+                                       Classes.warn="{Binding HasTileEditProblem}"
+                                       Text="{Binding TileEditSummary}"
+                                       ToolTip.Tip="{Binding TileToolHelp}" />
+
+                        </StackPanel>
+                    </Expander>
+                </Border>
+
                 <Border Classes="card">
                     <Expander ToolTip.Tip="{Binding ViewHelp}">
                         <Expander.Header>

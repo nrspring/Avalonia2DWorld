@@ -103,6 +103,27 @@ namespace NWorld.Map.Models
                 : null;
 
         /// <summary>
+        /// A second map over the same tiles, which goes on standing still while this one is
+        /// edited.
+        /// <para>
+        /// For the caller that has to file a map away and then change it in place -- undo,
+        /// which keeps whole maps. A pass that builds a new <see cref="TileMap"/> can file the
+        /// old one as it is, because nothing will touch it again; an edit to a handful of
+        /// tiles has no new map to file, and filing this one would file the very map about to
+        /// change.
+        /// </para>
+        /// <para>
+        /// The tiles are shared, not copied, and that is the whole point: a tile is never
+        /// written to once published -- an edit clones it -- so a snapshot that shares them
+        /// keeps every tile exactly as it was however much the live map moves on. What it
+        /// costs is one reference per tile: about a megabyte on a quarter-million-tile map,
+        /// against the hundreds a real copy would take.
+        /// </para>
+        /// </summary>
+        public TileMap Snapshot() =>
+            new(Width, Height, OriginX, OriginY, coordinate => this[coordinate]!);
+
+        /// <summary>
         /// Applies every change in <paramref name="edits"/> and then publishes once.
         /// <para>
         /// Batched rather than one call per tile because the interesting edits come in
