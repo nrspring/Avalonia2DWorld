@@ -292,6 +292,12 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         /// <summary>Sea, deep or shallow. One click, because there are only the two.</summary>
         Water,
+
+        /// <summary>
+        /// The deposit named in the drop-down, on or off. One click, because which of the five
+        /// is a question the panel has already answered -- see <see cref="EditResource"/>.
+        /// </summary>
+        Resource,
     }
 
     /// <summary>
@@ -333,6 +339,51 @@ public partial class MainWindowViewModel : MapViewModelBase
         }
     }
 
+    /// <summary>Whether a click puts the chosen deposit on a tile, or takes it off.</summary>
+    /// <inheritdoc cref="IsElevationTool" path="/summary/para"/>
+    public bool IsResourceTool
+    {
+        get => _tool == TileTool.Resource;
+        set
+        {
+            if (value)
+                Arm(TileTool.Resource);
+        }
+    }
+
+    /// <summary>
+    /// The five deposits, in the order the resource key reads them, for the drop-down to offer.
+    /// <para>
+    /// <see cref="TileResource.None"/> is not among them: nothing is not a deposit somebody
+    /// chooses to lay, it is what a tile goes back to when the one it has is clicked off. A
+    /// drop-down entry for it would be a second way of doing what the click already does.
+    /// </para>
+    /// <para>
+    /// The names come off the enum, which is also what the resource key is labelled from, so
+    /// the word in this list and the word beside the colour on the map are the same word.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<TileResource> EditResources { get; } =
+    [
+        TileResource.Iron,
+        TileResource.Wood,
+        TileResource.Oil,
+        TileResource.Sulphur,
+        TileResource.Stone,
+    ];
+
+    /// <summary>
+    /// Which deposit the resource tool lays. What the drop-down binds to.
+    /// <para>
+    /// Iron to begin with, for no better reason than that it is the first of them: something
+    /// has to be chosen, and a drop-down opening on nothing would make the first click on the
+    /// map a click that did nothing.
+    /// </para>
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TileEditSummary))]
+    private TileResource _editResource = TileResource.Iron;
+
     /// <summary>
     /// Picks up a tool. The line under them goes back to saying what the new one does, because
     /// what it says at the moment is what the old one did.
@@ -348,6 +399,7 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         OnPropertyChanged(nameof(IsElevationTool));
         OnPropertyChanged(nameof(IsWaterTool));
+        OnPropertyChanged(nameof(IsResourceTool));
         OnPropertyChanged(nameof(TileEditSummary));
         OnPropertyChanged(nameof(HasTileEditProblem));
     }
@@ -358,9 +410,12 @@ public partial class MainWindowViewModel : MapViewModelBase
     public string TileEditSummary =>
         _map is null
             ? "No map yet -- make one in the Start panel."
-            : _tileEditReport ?? (_tool == TileTool.Water
-                ? "Click a sea tile to switch it between deep and shallow."
-                : "Left click raises a tile. Right click lowers it.");
+            : _tileEditReport ?? _tool switch
+            {
+                TileTool.Water => "Click a sea tile to switch it between deep and shallow.",
+                TileTool.Resource => $"Click a tile to put {EditResource} on it, or take it off.",
+                _ => "Left click raises a tile. Right click lowers it.",
+            };
 
     /// <summary>Whether that line is a complaint, and so drawn in the warning colour.</summary>
     public bool HasTileEditProblem => _map is null || _tileEditRefused;
@@ -657,10 +712,11 @@ public partial class MainWindowViewModel : MapViewModelBase
          "turn off.@@" +
          "Dragging with the right button still pans the map, panel open or shut. A drag moves " +
          "the map and changes nothing; only a right click that stays put is a click.@@" +
-         "Neither tool moves a coastline. Elevation works on land and never goes below " +
+         "No tool here moves a coastline. Elevation works on land and never goes below " +
          $"{LowestEditableElevation}, which is flat land; water works on the sea and leaves it " +
-         "sea. Where the two meet is drawn from a mask and a seed in the Base Land panel, and " +
-         "drawing it a tile at a time would be a second and much worse way of doing the same " +
+         "sea; a deposit sits on top of ground and does not change it. Where the land and the " +
+         "sea meet is drawn from a mask and a seed in the Base Land panel, and drawing it a " +
+         "tile at a time would be a second and much worse way of doing the same " +
          "thing.").Replace("@@", "\n\n");
 
     /// <summary>The tool choice's tooltip.</summary>
@@ -677,8 +733,18 @@ public partial class MainWindowViewModel : MapViewModelBase
          "sea is all at one level, and a shallow is water near enough to the shore that a map " +
          "would paint it paler. Mark Shallows in the Base Land panel lays the whole band at " +
          "once and will overwrite anything set here.@@" +
+         "Change resource puts the deposit named in the drop-down on the tile, or takes it off " +
+         "again if it is already there. A tile holding a different deposit is given this one " +
+         "instead -- there is room for one at a time. Like the water tool it is one click, and " +
+         "the right button does nothing.@@" +
+         "Where a deposit may sit is the same rule the scatter passes obey, so a click can be " +
+         "refused: nothing at sea or on running water, no timber above the treeline or in sand, " +
+         "and no oil off the flats and hills. Ore, brimstone and stone go anywhere on dry land. " +
+         "Taking one off is never refused. Scattering from the Resources panel replaces every " +
+         "deposit of the kind it is dealing, so it will overwrite what is placed here.@@" +
          "A click that has nothing to do says so and changes nothing: past either end of the " +
-         "heights, elevation on the sea, or water on the land.@@" +
+         "heights, elevation on the sea, water on the land, or a deposit on ground that cannot " +
+         "hold it.@@" +
          "A run of clicks is one undo, not one each, whichever tools it used. The history is " +
          $"only {UndoDepth} maps deep, and filing every click would mean five touch-ups threw " +
          "away the build they were touching up -- so Ctrl+Z puts the map back as it was when " +
@@ -2491,10 +2557,20 @@ public partial class MainWindowViewModel : MapViewModelBase
         // pointer through that is a mark nobody asked to move.
         if (IsEditingTiles)
         {
-            if (_tool == TileTool.Water)
-                SwitchWater(map, clicked);
-            else
-                EditElevation(map, clicked, 1);
+            switch (_tool)
+            {
+                case TileTool.Water:
+                    SwitchWater(map, clicked);
+                    break;
+
+                case TileTool.Resource:
+                    ToggleResource(map, clicked);
+                    break;
+
+                default:
+                    EditElevation(map, clicked, 1);
+                    break;
+            }
 
             return;
         }
@@ -2523,10 +2599,10 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// makes the correction cost more than the mistake.
     /// </para>
     /// <para>
-    /// The elevation tool's, and no other's. Deep and shallow are two states and not a scale,
-    /// so there is no second direction for the water tool to put on the second button, and a
-    /// right click that did the same as a left one would be a way of pressing the same button
-    /// twice.
+    /// The elevation tool's, and no other's. Height is a scale and has two directions to give
+    /// the two buttons; the other tools are switches -- deep or shallow, the deposit or none --
+    /// and a switch has only the one move, so a right click that did what a left one does would
+    /// be a way of pressing the same button twice.
     /// </para>
     /// <para>
     /// Nothing at all with the panel shut. The right button is how the map is dragged around,
@@ -2687,6 +2763,77 @@ public partial class MainWindowViewModel : MapViewModelBase
     }
 
     /// <summary>
+    /// Puts <see cref="EditResource"/> on one tile, or takes it off again.
+    /// <para>
+    /// A toggle of the chosen deposit and not a cycle through all five: the drop-down has
+    /// already said which one, so the only question a click has left is whether the tile has it.
+    /// A tile holding a different deposit is given this one -- there is room for one at a time,
+    /// and swapping is what somebody clicking iron onto a wood was asking for.
+    /// </para>
+    /// <para>
+    /// Where a deposit may sit is <see cref="ResourceBuilder.CanHold"/>'s to say, the same rule
+    /// the scatter passes are held to and the same one <see cref="EditElevation"/> re-asks when
+    /// it moves the ground out from under one. Taking a deposit off is never refused: whatever
+    /// the ground is, it can be ground with nothing on it.
+    /// </para>
+    /// </summary>
+    private void ToggleResource(TileMap map, TileCoordinate coordinate)
+    {
+        if (map[coordinate] is not { } tile)
+            return;
+
+        var wanted = EditResource;
+        var held = ResourceOf(tile);
+
+        // Off, and nothing else to check. A tile that is losing what it had cannot be the wrong
+        // ground for what it is left with.
+        if (held == wanted)
+        {
+            RememberTileEdit(map);
+
+            map.Edit(editor => editor.Update(coordinate, edited =>
+                edited.MapRenderComponents.Remove(RenderComponentLayers.Resource)));
+
+            Tiles = map.Tiles;
+
+            ReportEdit(coordinate, $"has no {wanted} now.", refused: false);
+            return;
+        }
+
+        var cover = CoverOf(tile);
+
+        if (!ResourceBuilder.CanHold(wanted, tile.Elevation, cover))
+        {
+            // The two halves of the rule, said apart, because they are refusals of different
+            // kinds: there is no ground here at all, or there is and it is the wrong sort.
+            ReportEdit(
+                coordinate,
+                tile.Elevation <= Elevations.Sea || cover is GroundCover.River or GroundCover.Shallow
+                    ? $"is water. {wanted} needs dry ground."
+                    : $"is no ground for {wanted}.",
+                refused: true);
+
+            return;
+        }
+
+        RememberTileEdit(map);
+
+        map.Edit(editor => editor.Update(
+            coordinate,
+            edited => edited.SetResourceType(MarkerOf(wanted))));
+
+        Tiles = map.Tiles;
+
+        // Named rather than merely confirmed, since the click may have replaced something: what
+        // the tile has now is the useful half, and on the terrain picture one marker looks much
+        // like another until it is zoomed right in.
+        ReportEdit(
+            coordinate,
+            held == TileResource.None ? $"has {wanted}." : $"has {wanted} in place of {held}.",
+            refused: false);
+    }
+
+    /// <summary>
     /// Files the map as it stands before a tile edit, unless the last thing filed was the last
     /// tile edit's map.
     /// <para>
@@ -2844,16 +2991,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         // On its own layer over the ground, which is what lets it be drawn without the tile
         // having to stop being marsh or sand to carry it.
         if (resource != TileResource.None)
-        {
-            tile.SetResourceType(resource switch
-            {
-                TileResource.Iron => MapRenderComponentConstants.Iron,
-                TileResource.Wood => MapRenderComponentConstants.Wood,
-                TileResource.Oil => MapRenderComponentConstants.Oil,
-                TileResource.Sulphur => MapRenderComponentConstants.Sulphur,
-                _ => MapRenderComponentConstants.Stone,
-            });
-        }
+            tile.SetResourceType(MarkerOf(resource));
 
         Label(tile);
 
@@ -2875,6 +3013,25 @@ public partial class MainWindowViewModel : MapViewModelBase
         GroundCover.River => MapRenderComponentConstants.Water,
 
         _ => MapRenderComponentConstants.Grass,
+    };
+
+    /// <summary>
+    /// Which marker a deposit is drawn with. The other direction of <see cref="ResourceOf"/>,
+    /// and shared by the pass that builds a tile and the click that lays one.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TileResource.None"/> has no marker and must not be asked for: nothing is
+    /// drawn by leaving the layer empty, not by putting a component there that means nothing.
+    /// Callers test for it first -- both of them have to anyway, since one is deciding whether
+    /// to write the layer at all and the other is deciding whether to clear it.
+    /// </remarks>
+    private static Guid MarkerOf(TileResource resource) => resource switch
+    {
+        TileResource.Iron => MapRenderComponentConstants.Iron,
+        TileResource.Wood => MapRenderComponentConstants.Wood,
+        TileResource.Oil => MapRenderComponentConstants.Oil,
+        TileResource.Sulphur => MapRenderComponentConstants.Sulphur,
+        _ => MapRenderComponentConstants.Stone,
     };
 
     /// <summary>

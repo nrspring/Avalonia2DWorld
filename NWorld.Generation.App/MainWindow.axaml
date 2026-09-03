@@ -141,6 +141,28 @@
             <Setter Property="Padding" Value="8,0,0,0" />
         </Style>
 
+        <!-- Sized and surfaced like the text boxes above rather than like a stock combo, which
+             stands a head taller than everything else in the panel and paints itself a lighter
+             grey than the card it sits on.
+
+             Properties on the control only, with nothing reaching into the Fluent template the
+             way the TextBox styles above have to. The parts of a combo are not the parts of a
+             text box and guessing at their names writes a style that silently does nothing; the
+             resting state is template-bound and takes these, which is the state the panel is
+             read in. The popup is left alone in any case: it is drawn over the map rather
+             than in the card, where the Fluent list is legible as it is. -->
+        <Style Selector="Border.card ComboBox">
+            <Setter Property="CornerRadius" Value="7" />
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="Background" Value="#12FFFFFF" />
+            <Setter Property="BorderBrush" Value="#1FFFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+        </Style>
+
         <!-- ========== the key over the map ========== -->
 
         <!-- A card like the panels, but floating in the far corner from them and holding a
@@ -983,6 +1005,19 @@
                                 <RadioButton Content="Change water type"
                                              GroupName="tileTool"
                                              IsChecked="{Binding IsWaterTool}" />
+                                <RadioButton Content="Change resource"
+                                             GroupName="tileTool"
+                                             IsChecked="{Binding IsResourceTool}" />
+
+                                <!-- Under its own radio and indented to it, so it reads as that
+                                     tool's setting rather than as a fourth choice in the list.
+                                     Shown only with the tool it belongs to: a drop-down that
+                                     did nothing while elevation was held would be a control
+                                     asking to be adjusted for no effect. -->
+                                <ComboBox Margin="26,2,0,0"
+                                          IsVisible="{Binding IsResourceTool}"
+                                          ItemsSource="{Binding EditResources}"
+                                          SelectedItem="{Binding EditResource, Mode=TwoWay}" />
                             </StackPanel>
 
                             <!-- What the last click did, or what the next one will do. The one
