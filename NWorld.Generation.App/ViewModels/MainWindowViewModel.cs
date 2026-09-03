@@ -56,18 +56,24 @@ public partial class MainWindowViewModel : MapViewModelBase
     private const string DoubleBreak = "\n\n";
 
     /// <summary>
-    /// The lowest a tile may be edited to: the lowest hill.
+    /// The lowest a tile may be edited to: flat land, one above the sea.
     /// <para>
-    /// Hand editing shapes relief, and the floor is what keeps it to that. Below this are the
-    /// flats and the sea, which is to say the coastline, and the coastline is drawn from a mask
-    /// and a seed by the Base Land panel -- see the remarks on <see cref="EditElevation"/>.
+    /// Hand editing shapes relief, and the floor is what keeps it to that. All the ground there
+    /// is lies at or above this; the only thing below it is the sea, and where the sea meets the
+    /// land is a coastline, which the Base Land panel draws from a mask and a seed -- see the
+    /// remarks on <see cref="EditElevation"/>.
     /// </para>
     /// <para>
-    /// Written as the first hill rather than as two, because that is what it means: the floor
-    /// moves with the bands if the bands ever move.
+    /// Flat land and not the first hill, so that a tile can be brought all the way back down to
+    /// the ground a land pass laid: a floor above the flats would make the first click on every
+    /// flat tile a one-way trip, and leave a rim of hills wherever a ridge was walked back.
+    /// </para>
+    /// <para>
+    /// Written as the band rather than as one, because that is what it means: the floor is the
+    /// lowest ground there is, and it moves with the bands if the bands ever move.
     /// </para>
     /// </summary>
-    private const int LowestEditableElevation = Elevations.HillsFrom;
+    private const int LowestEditableElevation = Elevations.Flat;
 
     /// <summary>
     /// How many maps back undo can go.
@@ -271,27 +277,10 @@ public partial class MainWindowViewModel : MapViewModelBase
     [NotifyPropertyChangedFor(nameof(TileEditSummary))]
     private bool _isEditingTiles;
 
-    /// <summary>Which way a click moves the ground under it.</summary>
-    private TileTool _tool = TileTool.Raise;
-
     /// <summary>
-    /// What the Edit Tiles panel does to the tile that is clicked. One at a time by
-    /// construction: a click has one outcome, and a panel that let you arm two would have to
-    /// decide which of them won.
-    /// </summary>
-    private enum TileTool
-    {
-        /// <summary>A step up, as far as the highest mountain.</summary>
-        Raise,
-
-        /// <summary>A step down, as far as the sea.</summary>
-        Lower,
-    }
-
-    /// <summary>
-    /// What the last click on a tile did, or null if nothing has been clicked since the tool
-    /// was last changed. What <see cref="TileEditSummary"/> says when there is something to
-    /// report; before the first click it falls back to what the tool is about to do.
+    /// What the last click on a tile did, or null if nothing has been clicked since the map
+    /// last changed. What <see cref="TileEditSummary"/> says when there is something to report;
+    /// before the first click it falls back to saying what the buttons do.
     /// </summary>
     private string? _tileEditReport;
 
@@ -299,62 +288,12 @@ public partial class MainWindowViewModel : MapViewModelBase
     private bool _tileEditRefused;
 
     /// <summary>
-    /// Whether a click raises the tile under it. What the Raise radio button binds to.
-    /// <para>
-    /// A boolean each rather than the enum and a converter, for the reason the choice of
-    /// picture is one: a boolean is what a radio button binds to.
-    /// </para>
-    /// </summary>
-    public bool IsRaiseTool
-    {
-        get => _tool == TileTool.Raise;
-        set
-        {
-            if (value)
-                Arm(TileTool.Raise);
-        }
-    }
-
-    /// <summary>Whether a click lowers the tile under it.</summary>
-    /// <inheritdoc cref="IsRaiseTool" path="/summary/para"/>
-    public bool IsLowerTool
-    {
-        get => _tool == TileTool.Lower;
-        set
-        {
-            if (value)
-                Arm(TileTool.Lower);
-        }
-    }
-
-    /// <summary>
-    /// Picks up a tool. The note goes back to saying what the new tool will do, because what
-    /// it says at the moment is what the old one did.
-    /// </summary>
-    private void Arm(TileTool tool)
-    {
-        if (_tool == tool)
-            return;
-
-        _tool = tool;
-        _tileEditReport = null;
-        _tileEditRefused = false;
-
-        OnPropertyChanged(nameof(IsRaiseTool));
-        OnPropertyChanged(nameof(IsLowerTool));
-        OnPropertyChanged(nameof(TileEditSummary));
-        OnPropertyChanged(nameof(HasTileEditProblem));
-    }
-
-    /// <summary>
     /// What the last click did, or what the next one will do. The line under the tools.
     /// </summary>
     public string TileEditSummary =>
         _map is null
             ? "No map yet -- make one in the Start panel."
-            : _tileEditReport ?? (_tool == TileTool.Raise
-                ? "Click a tile to raise it one step."
-                : "Click a tile to lower it one step.");
+            : _tileEditReport ?? "Left click raises a tile. Right click lowers it.";
 
     /// <summary>Whether that line is a complaint, and so drawn in the warning colour.</summary>
     public bool HasTileEditProblem => _map is null || _tileEditRefused;
@@ -644,30 +583,39 @@ public partial class MainWindowViewModel : MapViewModelBase
     public string TileEditHelp =>
         ("Shape the land a tile at a time, by hand, where a pass has left something not quite " +
          "right -- a gap in a ridge, a saddle in the wrong place, a summit a step short.@@" +
-         "While this panel is open a click on the map edits the tile under it instead of " +
-         "selecting it. Closing the panel, or opening any other, puts the click back to " +
-         "selecting: there is no separate switch to remember to turn off.@@" +
+         "While this panel is open the map is under the tool: left click raises the tile you " +
+         "are over, right click lowers it. Closing the panel, or opening any other, gives the " +
+         "map back -- left click goes back to selecting a tile, and right click to nothing at " +
+         "all. There is no separate switch to remember to turn off.@@" +
+         "Dragging with the right button still pans the map, panel open or shut. A drag moves " +
+         "the map and changes nothing; it is a right click that stays put that lowers a " +
+         "tile.@@" +
          "Relief only. Land, never the sea, and never below " +
-         $"{LowestEditableElevation} -- so nothing here moves a coastline or flattens the " +
-         "flats. Those come from a mask and a seed in the Base Land panel, and doing them a " +
-         "tile at a time would be a second and much worse way of doing the same thing.@@" +
+         $"{LowestEditableElevation}, which is flat land -- so a tile can be walked all the " +
+         "way back down to the ground a land pass laid it at, and no further. Nothing here " +
+         "moves a coastline: that comes from a mask and a seed in the Base Land panel, and " +
+         "drawing one a tile at a time would be a second and much worse way of doing the same " +
+         "thing.@@" +
          "What a pass would have decided about the tile is decided again around its new " +
          "height: ground taken up past the hills loses its marsh or its sand, and a deposit " +
          "that cannot sit at the new height goes with it.").Replace("@@", "\n\n");
 
-    /// <summary>The tool choice's tooltip.</summary>
+    /// <summary>The tool's tooltip.</summary>
     public string TileToolHelp =>
-        ("Which way a click moves the ground: one elevation at a time, between " +
+        ("One elevation a click, between " +
          $"{LowestEditableElevation} and {Elevations.MountainsTo}, which is as low and as high " +
-         "as hand editing goes.@@" +
-         "One tool at a time, and one of them always held. A click that would go past either " +
-         "end says so and changes nothing, and so does a click on the sea -- there is no " +
-         "ground there to raise.@@" +
-         "A run of clicks is one undo, not one each. The history is only " +
-         $"{UndoDepth} maps deep, and filing every click would mean five touch-ups threw away " +
-         "the build they were touching up -- so Ctrl+Z puts the map back as it was when this " +
-         "run of editing started. Running a pass, opening a file or making a map ends the run, " +
-         "and the next click starts a new one.").Replace("@@", "\n\n");
+         "as hand editing goes. Left click up, right click down.@@" +
+         "Both directions on one tool, because shaping ground is going back and forth over the " +
+         "same few tiles: a step too far and a step back should not be a trip to the panel and " +
+         "back between them.@@" +
+         "A click that would go past either end says so and changes nothing, and so does a " +
+         "click on the sea -- there is no ground there to raise.@@" +
+         "A run of clicks is one undo, not one each, and raising and lowering both count as " +
+         $"the same run. The history is only {UndoDepth} maps deep, and filing every click " +
+         "would mean five touch-ups threw away the build they were touching up -- so Ctrl+Z " +
+         "puts the map back as it was when this run of editing started. Running a pass, " +
+         "opening a file or making a map ends the run, and the next click starts a new " +
+         "one.").Replace("@@", "\n\n");
 
     /// <summary>What the View panel is for.</summary>
     public string ViewHelp =>
@@ -2475,7 +2423,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         // pointer through that is a mark nobody asked to move.
         if (IsEditingTiles)
         {
-            EditElevation(map, clicked, _tool == TileTool.Raise ? 1 : -1);
+            EditElevation(map, clicked, 1);
             return;
         }
 
@@ -2495,15 +2443,39 @@ public partial class MainWindowViewModel : MapViewModelBase
     }
 
     /// <summary>
+    /// Lowers the tile that was right-clicked, while the Edit Tiles panel is open.
+    /// <para>
+    /// The other direction, on the other button, rather than a second tool to go and pick in
+    /// the panel first. Shaping ground is a matter of going back and forth over the same few
+    /// tiles -- a step too far, a step back -- and a panel you have to return to between them
+    /// makes the correction cost more than the mistake.
+    /// </para>
+    /// <para>
+    /// Nothing at all with the panel shut. The right button is how the map is dragged around,
+    /// and a right click that quietly changed a tile whenever a drag happened not to move
+    /// would be a map that edits itself.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private void RightClick(TileCoordinate? coordinate)
+    {
+        if (!IsEditingTiles || _map is not { } map || coordinate is not { } clicked)
+            return;
+
+        EditElevation(map, clicked, -1);
+    }
+
+    /// <summary>
     /// Moves one tile's ground up or down a step and puts it right: the height, the ground it
     /// is drawn with, what it is worth, and its label.
     /// <para>
     /// Relief only. It will not take a tile below <see cref="LowestEditableElevation"/> and it
-    /// will not touch the sea, so no click here moves a coastline: what is land stays land,
-    /// what is sea stays sea, and the flats a land pass laid down stay flat. Drawing coastlines
-    /// is the Base Land panel's job, and it does it from a mask and a seed -- a tool that could
-    /// do it a tile at a time would be a second and much worse way of doing the same thing,
-    /// and it is why the land mask the generators build from needs no telling here.
+    /// will not touch the sea, so no click here moves a coastline: what is land stays land and
+    /// what is sea stays sea, however far the ground between them is walked up and down.
+    /// Drawing coastlines is the Base Land panel's job, and it does it from a mask and a seed
+    /// -- a tool that could do it a tile at a time would be a second and much worse way of
+    /// doing the same thing, and it is why the land mask the generators build from needs no
+    /// telling here.
     /// </para>
     /// <para>
     /// An edit to the live map rather than a rebuild of it, which is what the generator passes

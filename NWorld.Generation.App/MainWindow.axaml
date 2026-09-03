@@ -290,6 +290,7 @@
                      Options="{Binding Options}"
                      HoverCommand="{Binding HoverCommand}"
                      ClickCommand="{Binding ClickCommand}"
+                     RightClickCommand="{Binding RightClickCommand}"
                      ZoomCommand="{Binding ZoomCommand}"
                      MiniMapCommand="{Binding MiniMapCommand}"
                      PanCommand="{Binding PanCommand}" />
@@ -972,13 +973,18 @@
 
                             <TextBlock Classes="field" Text="TOOL" />
 
+                            <!-- The one tool there is, and so checked in the markup with
+                                 nothing behind it: which tool is armed is not a question yet,
+                                 and a view model property that could only ever answer "that
+                                 one" would be state pretending to be a choice. The group is
+                                 here so the second tool is a second radio and nothing else.
+
+                                 Which button does which is on the line below rather than in
+                                 the label, because it is two facts about one tool. -->
                             <StackPanel Spacing="6" ToolTip.Tip="{Binding TileToolHelp}">
-                                <RadioButton Content="Raise elevation"
+                                <RadioButton Content="Change elevation"
                                              GroupName="tileTool"
-                                             IsChecked="{Binding IsRaiseTool}" />
-                                <RadioButton Content="Lower elevation"
-                                             GroupName="tileTool"
-                                             IsChecked="{Binding IsLowerTool}" />
+                                             IsChecked="True" />
                             </StackPanel>
 
                             <!-- What the last click did, or what the next one will do. The one

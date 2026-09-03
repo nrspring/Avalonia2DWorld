@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows.Input;
@@ -89,13 +89,37 @@ namespace NWorld.Map.Controls
             AvaloniaProperty.Register<MapView, ICommand?>(nameof(ClickCommand));
 
         /// <summary>
+        /// Invoked with the <see cref="TileCoordinate"/> that was right-clicked. The parameter
+        /// is never null.
+        /// <para>
+        /// The other thing a tile can be asked to do, for the caller that has two of them and
+        /// would rather not make somebody pick between them in a panel first. What that is, is
+        /// none of the control's business.
+        /// </para>
+        /// <para>
+        /// Fired on release rather than on press, and only when the map did not move under the
+        /// button -- see <see cref="PanCommandProperty"/>, which is the same button.
+        /// </para>
+        /// </summary>
+        public static readonly StyledProperty<ICommand?> RightClickCommandProperty =
+            AvaloniaProperty.Register<MapView, ICommand?>(nameof(RightClickCommand));
+
+        /// <summary>
         /// Invoked with a <see cref="MapPanRequest"/> for each step of a right-button drag
         /// across the map. The parameter is never null.
         /// <para>
         /// The right button, because the left one already means something on a map made of
-        /// tiles: a drag has to be distinguishable from a click, and asking the control to
-        /// tell them apart by how far the pointer moved before it came up would make every
-        /// click wait to find out what it was.
+        /// tiles: a left drag has to be distinguishable from a left click, and asking the
+        /// control to tell those apart by how far the pointer moved before it came up would
+        /// make every click wait to find out what it was.
+        /// </para>
+        /// <para>
+        /// The right button now carries both, so it does pay that price -- but only on the
+        /// button that has nothing to do on the way down. A drag pans from the first move; a
+        /// press and release within <see cref="RightClickSlack"/> of each other never panned
+        /// anywhere and is handed to <see cref="RightClickCommandProperty"/> instead. Nothing
+        /// waits: the pan still starts on the first move, and it is the click that is decided
+        /// last, which is the one that can afford to be.
         /// </para>
         /// <para>
         /// Bind it and the map can be dragged around; leave it unbound and a right drag does
@@ -145,6 +169,17 @@ namespace NWorld.Map.Controls
         // every wave on the map to a phase nobody watched it reach.
         private const double MaxAnimationStep = 0.25;
 
+        /// <summary>
+        /// How far the pointer may wander between a right press and its release and still count
+        /// as a click rather than a drag.
+        /// <para>
+        /// Not zero, because a hand on a mouse moves a pixel or two on the way to letting go,
+        /// and a tool that ignored every second click would read as broken. Small, because the
+        /// gesture it has to stay clear of is a deliberate drag across the map.
+        /// </para>
+        /// </summary>
+        private const double RightClickSlack = 4;
+
         // Held rather than made per pointer move: the pointer moves a great many times.
         private static readonly Cursor PickCursor = new(StandardCursorType.Hand);
         private static readonly Cursor PanCursor = new(StandardCursorType.SizeAll);
@@ -174,6 +209,12 @@ namespace NWorld.Map.Controls
         // there is no drag. Kept as a position rather than a total, because what goes to the
         // command is the step and not the gesture.
         private Point? _panFrom;
+
+        /// <summary>
+        /// Where the right button went down, kept still while <see cref="_panFrom"/> walks with
+        /// the pointer. What the release is measured against to tell a click from a drag.
+        /// </summary>
+        private Point? _rightPressedAt;
 
         private TileCoordinate? _hovered;
 
@@ -236,6 +277,13 @@ namespace NWorld.Map.Controls
         {
             get => GetValue(ClickCommandProperty);
             set => SetValue(ClickCommandProperty, value);
+        }
+
+        /// <inheritdoc cref="RightClickCommandProperty"/>
+        public ICommand? RightClickCommand
+        {
+            get => GetValue(RightClickCommandProperty);
+            set => SetValue(RightClickCommandProperty, value);
         }
 
         /// <inheritdoc cref="PanCommandProperty"/>
@@ -374,14 +422,24 @@ namespace NWorld.Map.Controls
 
             if (point.Properties.IsRightButtonPressed)
             {
-                // Not over the inset, which is a picture of the whole map and has nothing to
-                // pan, and not without somewhere to send it.
-                if (PanCommand is null || MiniMapRequestAt(position) is not null)
+                // Not over the inset, which is a picture of the whole map: it has nothing to
+                // pan and no tile of its own to change. And not without somewhere to send
+                // either half of the gesture -- bind neither command and the button is left
+                // alone for whatever else may want it.
+                if ((PanCommand is null && RightClickCommand is null)
+                    || MiniMapRequestAt(position) is not null)
                     return;
 
                 _panFrom = position;
+                _rightPressedAt = position;
                 e.Pointer.Capture(this);
-                Cursor = PanCursor;
+
+                // Only where a drag would actually go somewhere. With just the click bound
+                // there is nothing to drag, and a cursor promising otherwise would be a lie
+                // held for as long as the button is down.
+                if (PanCommand is not null)
+                    Cursor = PanCursor;
+
                 e.Handled = true;
                 return;
             }
@@ -423,10 +481,30 @@ namespace NWorld.Map.Controls
 
             if (_panFrom is not null)
             {
+                var releasedAt = e.GetPosition(this);
+
+                // Where the button went down against where it came up. A drag has moved the
+                // map out from under the pointer by now and is finished; anything that stayed
+                // put was aimed at the tile it is still over.
+                var clicked = _rightPressedAt is { } from
+                    && Math.Abs(releasedAt.X - from.X) <= RightClickSlack
+                    && Math.Abs(releasedAt.Y - from.Y) <= RightClickSlack;
+
                 _panFrom = null;
+                _rightPressedAt = null;
                 e.Pointer.Capture(null);
                 e.Handled = true;
                 UpdateCursor();
+
+                if (clicked && ToTile(releasedAt) is { } tile)
+                {
+                    // Brought up to date first, for the reason the left button does it: a
+                    // touch or a pen reaches here having never sent a move, and the highlight
+                    // should be on the tile that is about to change.
+                    SetHovered(tile);
+                    Execute(RightClickCommand, tile);
+                }
+
                 return;
             }
 
@@ -457,6 +535,7 @@ namespace NWorld.Map.Controls
 
             _draggingMiniMap = false;
             _panFrom = null;
+            _rightPressedAt = null;
             UpdateCursor();
         }
 
@@ -513,6 +592,7 @@ namespace NWorld.Map.Controls
             _rateWindowStart = _clock.Elapsed.TotalSeconds;
             _draggingMiniMap = false;
             _panFrom = null;
+            _rightPressedAt = null;
             _pointer = null;
             Cursor = null;
             SetHovered(null);
