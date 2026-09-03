@@ -52,6 +52,11 @@ public sealed record MapSettings
     public double? RiverLength { get; init; }
     public string? RiverSeed { get; init; }
 
+    public double? LakeCount { get; init; }
+    public double? LakeSize { get; init; }
+    public double? LakeShape { get; init; }
+    public string? LakeSeed { get; init; }
+
     public double? IronCoverage { get; init; }
     public double? WoodCoverage { get; init; }
     public double? OilCoverage { get; init; }

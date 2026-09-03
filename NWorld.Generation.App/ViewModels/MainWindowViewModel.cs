@@ -599,6 +599,30 @@ public partial class MainWindowViewModel : MapViewModelBase
     [NotifyPropertyChangedFor(nameof(RiverSummary), nameof(HasRiverProblem))]
     private string _riverSeed = "1";
 
+    /// <summary>How many lakes to fill in the low ground.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LakeSummary))]
+    private double _lakeCount = 6;
+
+    /// <summary>Roughly how many tiles a lake covers.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LakeSummary))]
+    private double _lakeSize = 60;
+
+    /// <summary>
+    /// How far a lake reaches out of round, as a percentage. High by default: a lake that takes
+    /// the shape the ground alone gives it is a pond.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LakeSummary))]
+    private double _lakeShape = 65;
+
+    /// <inheritdoc cref="ContinentSeed"/>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(BuildLakesCommand))]
+    [NotifyPropertyChangedFor(nameof(LakeSummary), nameof(HasLakeProblem))]
+    private string _lakeSeed = "1";
+
     /// <summary>How much of the land ends up carrying iron, as a percentage.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IronSummary))]
@@ -1009,6 +1033,71 @@ public partial class MainWindowViewModel : MapViewModelBase
          "It sets the lie of the country the rivers wind through, so changing it moves every " +
          "bend without moving a single source: the sources come off the relief, which this " +
          "does not touch.").Replace("@@", "\n\n");
+
+    /// <summary>What the Lakes panel is for.</summary>
+    public string LakeHelp =>
+        ("Fill the hollows in the low ground with standing water.@@" +
+         "A lake is what a tile is made of and not how high it stands, exactly as a river is: " +
+         "it takes the elevation of the ground it lies over, so nothing here digs a basin, " +
+         "moves a coast or touches a range. Press it over a finished world and the world is as " +
+         "it was, with water in it.@@" +
+         "A lake is drawn as the same water a river is, which is what lets a river run into one " +
+         "as a single unbroken surface rather than two blues meeting at a line. It also means " +
+         "the Rivers panel already knows what a lake is: a later set of rivers keeps its " +
+         "sources clear of one and ends its routes at one, which is what a river reaching a " +
+         "lake does.@@" +
+         "They are not dropped on the map as shapes. Each one fills the hollow it starts in, " +
+         "outwards from the lowest tile and never more than a step above it, so its outline is " +
+         "the contour of the ground -- which is why it comes out an awkward shape rather than a " +
+         "circle, and why it is never found lying up a hillside.@@" +
+         "Like the rivers, a press adds to what is there rather than replacing it. Press again " +
+         "for another set and it will find hollows the last one left alone, keeping well clear " +
+         "of the sea and of water already down; keep pressing and it will eventually tell you " +
+         "there is no room left.").Replace("@@", "\n\n");
+
+    /// <summary>The lake-count tooltip.</summary>
+    public string LakeCountHelp =>
+        ("How many lakes to add to whatever is already there.@@" +
+         "A target rather than a promise. Each one needs a hollow with room for the size you " +
+         "have asked for, dry land between it and every other piece of water, and space from " +
+         "the lakes this press has already filled -- so a rolling world with wide valleys gives " +
+         "you the number you ask for and a flat or crowded one gives you fewer. The line below " +
+         "says which you got.@@" +
+         "Count them on the map by their shores and not by the blue: a lake that a river runs " +
+         "into is one piece of water with a river attached, and still one lake.").Replace("@@", "\n\n");
+
+    /// <summary>The lake-size tooltip.</summary>
+    public string LakeSizeHelp =>
+        ("About how many tiles of water a lake covers.@@" +
+         "An average, not a ruling: each one varies either side of it, because lakes of one " +
+         "size read as a spill of identical ponds. A hollow that can only hold half of what you " +
+         "have asked for is passed over for a better one rather than filled with a puddle.@@" +
+         "Asked in tiles of surface rather than in a width, since a lake has no width worth " +
+         "quoting -- that is rather the point of it. Somewhere around eighty tiles is a lake " +
+         "you can see at a glance on a map this size; a few hundred is an inland sea and will " +
+         "only fit in the broadest valleys your world has.").Replace("@@", "\n\n");
+
+    /// <summary>The lake-shape tooltip.</summary>
+    public string LakeShapeHelp =>
+        ("How far a lake reaches out of round.@@" +
+         "At nothing it takes only the shape the ground gives it, which in gentle country is " +
+         "close to a circle: on a plain the terrain has no opinion about which way the water " +
+         "should spread, and a growth with no opinion of its own answers that with a disc.@@" +
+         "Turn it up and a broad field of noise decides between the tiles the ground cannot, so " +
+         "the water reaches well into one quarter and hardly at all into the next -- lobes, " +
+         "bays and a headland, which is what a lake looks like.@@" +
+         "It never buys its shape by climbing. Going uphill is dear enough to outweigh the " +
+         "whole of this dial, so however far a lake reaches it stays in the hollow and stays " +
+         "flat.").Replace("@@", "\n\n");
+
+    /// <inheritdoc cref="ContinentSeedHelp"/>
+    public string LakeSeedHelp =>
+        ("Any whole number. The same seed with the same settings fills the same lakes, every " +
+         "time.@@" +
+         "It sets both the field that pulls their shapes out of round and how big each one comes " +
+         "out within the size you have asked for. Which hollows they choose comes off the " +
+         "relief, which this does not touch -- so changing it reshapes the lakes without moving " +
+         "them.").Replace("@@", "\n\n");
 
     /// <inheritdoc cref="ContinentSeedHelp"/>
     public string CoverSeedHelp =>
@@ -1745,7 +1834,10 @@ public partial class MainWindowViewModel : MapViewModelBase
             : $"{tiles:N0} tiles {what}.";
     }
 
-    /// <summary>How much of the map is ground a swamp or a desert could sit on.</summary>
+    /// <summary>
+    /// How much of the map is lowland: land, and not up in the mountains. What a swamp or a
+    /// desert may sit on, what timber and oil may sit on, and what a lake may lie in.
+    /// </summary>
     private long LowlandTiles() => CountTiles(Elevations.IsLowland);
 
     /// <summary>
@@ -1902,6 +1994,109 @@ public partial class MainWindowViewModel : MapViewModelBase
     [RelayCommand]
     private void NewRiverSeed() =>
         RiverSeed = NewSeed();
+
+    /// <summary>
+    /// The line under the lake controls: what the next run will do, or what is stopping it.
+    /// </summary>
+    public string LakeSummary
+    {
+        get
+        {
+            if (Tiles is null)
+                return "Make a map in Start first.";
+
+            if (_land is null)
+                return "Build some land first.";
+
+            if (!TryReadSeed(LakeSeed, out _))
+                return "Seed: any whole number.";
+
+            // Lakes sit in the low ground, so a world that is all sea and mountains has nowhere
+            // to put one. Worth saying outright rather than letting the button do nothing.
+            if (LowlandTiles() == 0)
+                return "No low ground to fill -- build some land first.";
+
+            var lakes = (int)LakeCount;
+
+            if (lakes <= 0)
+                return "No lakes.";
+
+            // What the last press managed, until a dial moves and it is a prediction again.
+            // Worth saying because neither shortfall is obvious from the map: the size dial may
+            // be asking for more than any hollow can hold, and a map that already has water on
+            // it has less room left for another set.
+            if (_lakesMade is { } ran)
+            {
+                return ran == lakes
+                    ? $"Added {ran:N0} lakes. Press again for another set."
+                    : ran == 0
+                        ? $"No hollow left with room for {(int)LakeSize:N0} tiles of water."
+                        : $"Added {ran:N0} of {lakes:N0} -- no room for the rest.";
+            }
+
+            return $"Adds up to {lakes:N0} more lakes, about {(int)LakeSize:N0} tiles each, in the hollows.";
+        }
+    }
+
+    /// <summary>
+    /// How many lakes the last run actually managed, or null if a dial has moved since -- at
+    /// which point the line under the button goes back to saying what the next run will try.
+    /// </summary>
+    private int? _lakesMade;
+
+    // Any dial moving makes the last run's tally stale, as with the rivers above.
+    partial void OnLakeCountChanged(double value) => _lakesMade = null;
+
+    partial void OnLakeSizeChanged(double value) => _lakesMade = null;
+
+    partial void OnLakeShapeChanged(double value) => _lakesMade = null;
+
+    partial void OnLakeSeedChanged(string value) => _lakesMade = null;
+
+    /// <inheritdoc cref="HasSizeProblem"/>
+    public bool HasLakeProblem => !CanBuildLakes() || LowlandTiles() == 0;
+
+    /// <summary>
+    /// Fills another set of lakes in the low ground and puts the result on screen.
+    /// <para>
+    /// Cover only, like the rivers: the land and the relief both come through exactly as they
+    /// were, and a lake takes the height of the tiles it lies over.
+    /// </para>
+    /// <para>
+    /// Added rather than replacing, like the rivers and unlike the other cover passes, so
+    /// pressing it twice leaves two sets -- and the second sees the first's water, keeping clear
+    /// of it rather than laying a lake across it.
+    /// </para>
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanBuildLakes))]
+    private void BuildLakes()
+    {
+        if (_map is not { } map || _land is null || !TryReadSeed(LakeSeed, out var seed))
+            return;
+
+        Remember();
+
+        var relief = CurrentRelief(map);
+
+        var cover = LakeBuilder.Add(
+            map.Width, map.Height, relief, CurrentCover(map),
+            new LakeSettings((int)LakeCount, LakeSize, LakeShape / 100, seed),
+            out var made);
+
+        Rebuild(map, relief, cover, CurrentResources(map));
+
+        _lakesMade = made;
+        OnPropertyChanged(nameof(LakeSummary));
+    }
+
+    /// <summary>Whether there is land to fill lakes in, and a seed to fill them with.</summary>
+    private bool CanBuildLakes() =>
+        _map is not null && _land is not null && TryReadSeed(LakeSeed, out _);
+
+    /// <summary>Fills the lake seed box with a new one.</summary>
+    [RelayCommand]
+    private void NewLakeSeed() =>
+        LakeSeed = NewSeed();
 
     /// <summary>The line under the iron controls: what the next spread will do, or what is
     /// stopping it.</summary>
@@ -2101,6 +2296,10 @@ public partial class MainWindowViewModel : MapViewModelBase
                 RiverWinding = RiverWinding,
                 RiverLength = RiverLength,
                 RiverSeed = RiverSeed,
+                LakeCount = LakeCount,
+                LakeSize = LakeSize,
+                LakeShape = LakeShape,
+                LakeSeed = LakeSeed,
                 IronCoverage = IronCoverage,
                 WoodCoverage = WoodCoverage,
                 OilCoverage = OilCoverage,
@@ -2198,6 +2397,10 @@ public partial class MainWindowViewModel : MapViewModelBase
         RiverWinding = settings.RiverWinding ?? RiverWinding;
         RiverLength = settings.RiverLength ?? RiverLength;
         RiverSeed = settings.RiverSeed ?? RiverSeed;
+        LakeCount = settings.LakeCount ?? LakeCount;
+        LakeSize = settings.LakeSize ?? LakeSize;
+        LakeShape = settings.LakeShape ?? LakeShape;
+        LakeSeed = settings.LakeSeed ?? LakeSeed;
         CoverSeed = settings.CoverSeed ?? CoverSeed;
 
         IronCoverage = settings.IronCoverage ?? IronCoverage;
@@ -2479,6 +2682,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         BuildSwampsCommand.NotifyCanExecuteChanged();
         BuildDesertsCommand.NotifyCanExecuteChanged();
         BuildShallowsCommand.NotifyCanExecuteChanged();
+        BuildLakesCommand.NotifyCanExecuteChanged();
         BuildIronCommand.NotifyCanExecuteChanged();
         BuildWoodCommand.NotifyCanExecuteChanged();
         BuildOilCommand.NotifyCanExecuteChanged();
@@ -2507,6 +2711,8 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(SulphurSummary));
         OnPropertyChanged(nameof(StoneSummary));
         OnPropertyChanged(nameof(HasResourceProblem));
+        OnPropertyChanged(nameof(LakeSummary));
+        OnPropertyChanged(nameof(HasLakeProblem));
         OnPropertyChanged(nameof(TileEditSummary));
         OnPropertyChanged(nameof(HasTileEditProblem));
     }
