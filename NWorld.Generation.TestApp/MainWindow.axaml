@@ -1,0 +1,102 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:NWorld.Generation.TestApp.ViewModels"
+        xmlns:map="clr-namespace:NWorld.Map.Controls;assembly=NWorld.Map"
+        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+        x:Class="NWorld.Generation.TestApp.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{Binding Title}"
+        Width="1000" Height="700"
+        MinWidth="640" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        WindowState="Maximized">
+
+    <Design.DataContext>
+        <vm:MainWindowViewModel />
+    </Design.DataContext>
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="TextPrimary" Color="#EEF3FA" />
+        <SolidColorBrush x:Key="TextMuted" Color="#8492A6" />
+        <SolidColorBrush x:Key="TextWarn" Color="#F0A742" />
+    </Window.Resources>
+
+    <Window.Styles>
+
+        <!-- The same floating card the generation app uses, cut down to the one it needs.
+             Copied rather than shared: the styles there are written against that window's
+             resources and its accordion, and lifting them into a library to save nine lines
+             would be the tail wagging the dog. -->
+        <Style Selector="Border.card">
+            <Setter Property="BorderBrush" Value="#1FFFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Background" Value="#E6121A26" />
+            <Setter Property="Padding" Value="14,12" />
+            <Setter Property="Margin" Value="16" />
+            <Setter Property="BoxShadow" Value="0 8 28 0 #40000000" />
+        </Style>
+
+        <Style Selector="TextBlock.note">
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <Style Selector="TextBlock.note.warn">
+            <Setter Property="Foreground" Value="{StaticResource TextWarn}" />
+        </Style>
+
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#4C8DFF" />
+            <Setter Property="Foreground" Value="#0B1220" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+
+    </Window.Styles>
+
+    <!-- The map fills the window and the one control floats over it, the same arrangement the
+         generation app uses: this is a window onto a map, not a form with a map in it. -->
+    <Panel Background="#0B1220">
+
+        <map:MapView Tiles="{Binding Tiles}"
+                     Renderer="{Binding Renderer}"
+                     Options="{Binding Options}"
+                     ZoomCommand="{Binding ZoomCommand}"
+                     MiniMapCommand="{Binding MiniMapCommand}"
+                     PanCommand="{Binding PanCommand}" />
+
+        <Border Classes="card"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Width="220">
+
+            <StackPanel Spacing="10">
+
+                <Button Classes="primary"
+                        Content="Open"
+                        Click="OnLoadClick" />
+
+                <TextBlock Classes="note"
+                           Classes.warn="{Binding HasProblem}"
+                           Text="{Binding Status}" />
+
+                <!-- Said here because there is nothing else on screen to discover it from:
+                     the map takes the wheel and the right button, and neither is obvious on a
+                     window with one button on it. -->
+                <TextBlock Classes="note"
+                           Text="Wheel zooms. Right-drag pans. The inset jumps." />
+
+            </StackPanel>
+        </Border>
+
+    </Panel>
+
+</Window>
