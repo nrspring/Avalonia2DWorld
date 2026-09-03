@@ -277,10 +277,27 @@ public partial class MainWindowViewModel : MapViewModelBase
     [NotifyPropertyChangedFor(nameof(TileEditSummary))]
     private bool _isEditingTiles;
 
+    /// <summary>Which of the tools a click on the map is currently holding.</summary>
+    private TileTool _tool = TileTool.Elevation;
+
     /// <summary>
-    /// What the last click on a tile did, or null if nothing has been clicked since the map
-    /// last changed. What <see cref="TileEditSummary"/> says when there is something to report;
-    /// before the first click it falls back to saying what the buttons do.
+    /// What the Edit Tiles panel does to the tile that is clicked. One at a time by
+    /// construction: a click has one outcome, and a panel that let you arm two would have to
+    /// decide which of them won.
+    /// </summary>
+    private enum TileTool
+    {
+        /// <summary>Ground, up and down. Left click raises, right click lowers.</summary>
+        Elevation,
+
+        /// <summary>Sea, deep or shallow. One click, because there are only the two.</summary>
+        Water,
+    }
+
+    /// <summary>
+    /// What the last click on a tile did, or null if nothing has been clicked since the tool or
+    /// the map last changed. What <see cref="TileEditSummary"/> says when there is something to
+    /// report; before the first click it falls back to saying what the tool does.
     /// </summary>
     private string? _tileEditReport;
 
@@ -288,12 +305,62 @@ public partial class MainWindowViewModel : MapViewModelBase
     private bool _tileEditRefused;
 
     /// <summary>
+    /// Whether a click changes the height of the ground. What the elevation radio binds to.
+    /// <para>
+    /// A boolean each rather than the enum and a converter, for the reason the choice of
+    /// picture is one: a boolean is what a radio button binds to.
+    /// </para>
+    /// </summary>
+    public bool IsElevationTool
+    {
+        get => _tool == TileTool.Elevation;
+        set
+        {
+            if (value)
+                Arm(TileTool.Elevation);
+        }
+    }
+
+    /// <summary>Whether a click switches the sea between deep and shallow.</summary>
+    /// <inheritdoc cref="IsElevationTool" path="/summary/para"/>
+    public bool IsWaterTool
+    {
+        get => _tool == TileTool.Water;
+        set
+        {
+            if (value)
+                Arm(TileTool.Water);
+        }
+    }
+
+    /// <summary>
+    /// Picks up a tool. The line under them goes back to saying what the new one does, because
+    /// what it says at the moment is what the old one did.
+    /// </summary>
+    private void Arm(TileTool tool)
+    {
+        if (_tool == tool)
+            return;
+
+        _tool = tool;
+        _tileEditReport = null;
+        _tileEditRefused = false;
+
+        OnPropertyChanged(nameof(IsElevationTool));
+        OnPropertyChanged(nameof(IsWaterTool));
+        OnPropertyChanged(nameof(TileEditSummary));
+        OnPropertyChanged(nameof(HasTileEditProblem));
+    }
+
+    /// <summary>
     /// What the last click did, or what the next one will do. The line under the tools.
     /// </summary>
     public string TileEditSummary =>
         _map is null
             ? "No map yet -- make one in the Start panel."
-            : _tileEditReport ?? "Left click raises a tile. Right click lowers it.";
+            : _tileEditReport ?? (_tool == TileTool.Water
+                ? "Click a sea tile to switch it between deep and shallow."
+                : "Left click raises a tile. Right click lowers it.");
 
     /// <summary>Whether that line is a complaint, and so drawn in the warning colour.</summary>
     public bool HasTileEditProblem => _map is null || _tileEditRefused;
@@ -581,41 +648,42 @@ public partial class MainWindowViewModel : MapViewModelBase
 
     /// <summary>What the Edit Tiles panel is for.</summary>
     public string TileEditHelp =>
-        ("Shape the land a tile at a time, by hand, where a pass has left something not quite " +
-         "right -- a gap in a ridge, a saddle in the wrong place, a summit a step short.@@" +
-         "While this panel is open the map is under the tool: left click raises the tile you " +
-         "are over, right click lowers it. Closing the panel, or opening any other, gives the " +
-         "map back -- left click goes back to selecting a tile, and right click to nothing at " +
-         "all. There is no separate switch to remember to turn off.@@" +
+        ("Change the map a tile at a time, by hand, where a pass has left something not quite " +
+         "right -- a gap in a ridge, a saddle in the wrong place, a shelf that stops one tile " +
+         "short of the headland.@@" +
+         "While this panel is open the map is under whichever tool is held below. Closing the " +
+         "panel, or opening any other, gives the map back: left click goes back to selecting a " +
+         "tile, and right click to nothing at all. There is no separate switch to remember to " +
+         "turn off.@@" +
          "Dragging with the right button still pans the map, panel open or shut. A drag moves " +
-         "the map and changes nothing; it is a right click that stays put that lowers a " +
-         "tile.@@" +
-         "Relief only. Land, never the sea, and never below " +
-         $"{LowestEditableElevation}, which is flat land -- so a tile can be walked all the " +
-         "way back down to the ground a land pass laid it at, and no further. Nothing here " +
-         "moves a coastline: that comes from a mask and a seed in the Base Land panel, and " +
-         "drawing one a tile at a time would be a second and much worse way of doing the same " +
-         "thing.@@" +
-         "What a pass would have decided about the tile is decided again around its new " +
-         "height: ground taken up past the hills loses its marsh or its sand, and a deposit " +
-         "that cannot sit at the new height goes with it.").Replace("@@", "\n\n");
+         "the map and changes nothing; only a right click that stays put is a click.@@" +
+         "Neither tool moves a coastline. Elevation works on land and never goes below " +
+         $"{LowestEditableElevation}, which is flat land; water works on the sea and leaves it " +
+         "sea. Where the two meet is drawn from a mask and a seed in the Base Land panel, and " +
+         "drawing it a tile at a time would be a second and much worse way of doing the same " +
+         "thing.").Replace("@@", "\n\n");
 
-    /// <summary>The tool's tooltip.</summary>
+    /// <summary>The tool choice's tooltip.</summary>
     public string TileToolHelp =>
-        ("One elevation a click, between " +
-         $"{LowestEditableElevation} and {Elevations.MountainsTo}, which is as low and as high " +
-         "as hand editing goes. Left click up, right click down.@@" +
-         "Both directions on one tool, because shaping ground is going back and forth over the " +
-         "same few tiles: a step too far and a step back should not be a trip to the panel and " +
-         "back between them.@@" +
-         "A click that would go past either end says so and changes nothing, and so does a " +
-         "click on the sea -- there is no ground there to raise.@@" +
-         "A run of clicks is one undo, not one each, and raising and lowering both count as " +
-         $"the same run. The history is only {UndoDepth} maps deep, and filing every click " +
-         "would mean five touch-ups threw away the build they were touching up -- so Ctrl+Z " +
-         "puts the map back as it was when this run of editing started. Running a pass, " +
-         "opening a file or making a map ends the run, and the next click starts a new " +
-         "one.").Replace("@@", "\n\n");
+        ("What a click on the map does. One tool at a time, and one of them always held.@@" +
+         "Change elevation works the ground up and down, one elevation a click, between " +
+         $"{LowestEditableElevation} and {Elevations.MountainsTo}. Left click up, right click " +
+         "down -- both directions on one tool, because shaping ground is going back and forth " +
+         "over the same few tiles, and a step too far and a step back should not be a trip to " +
+         "the panel and back between them.@@" +
+         "Change water type switches a tile of sea between deep and shallow. One click does " +
+         "it, since there are only the two; the right button does nothing here, having no " +
+         "second direction to carry. It changes how the water is drawn and nothing else: the " +
+         "sea is all at one level, and a shallow is water near enough to the shore that a map " +
+         "would paint it paler. Mark Shallows in the Base Land panel lays the whole band at " +
+         "once and will overwrite anything set here.@@" +
+         "A click that has nothing to do says so and changes nothing: past either end of the " +
+         "heights, elevation on the sea, or water on the land.@@" +
+         "A run of clicks is one undo, not one each, whichever tools it used. The history is " +
+         $"only {UndoDepth} maps deep, and filing every click would mean five touch-ups threw " +
+         "away the build they were touching up -- so Ctrl+Z puts the map back as it was when " +
+         "this run of editing started. Running a pass, opening a file or making a map ends the " +
+         "run, and the next click starts a new one.").Replace("@@", "\n\n");
 
     /// <summary>What the View panel is for.</summary>
     public string ViewHelp =>
@@ -2423,7 +2491,11 @@ public partial class MainWindowViewModel : MapViewModelBase
         // pointer through that is a mark nobody asked to move.
         if (IsEditingTiles)
         {
-            EditElevation(map, clicked, 1);
+            if (_tool == TileTool.Water)
+                SwitchWater(map, clicked);
+            else
+                EditElevation(map, clicked, 1);
+
             return;
         }
 
@@ -2451,6 +2523,12 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// makes the correction cost more than the mistake.
     /// </para>
     /// <para>
+    /// The elevation tool's, and no other's. Deep and shallow are two states and not a scale,
+    /// so there is no second direction for the water tool to put on the second button, and a
+    /// right click that did the same as a left one would be a way of pressing the same button
+    /// twice.
+    /// </para>
+    /// <para>
     /// Nothing at all with the panel shut. The right button is how the map is dragged around,
     /// and a right click that quietly changed a tile whenever a drag happened not to move
     /// would be a map that edits itself.
@@ -2459,7 +2537,10 @@ public partial class MainWindowViewModel : MapViewModelBase
     [RelayCommand]
     private void RightClick(TileCoordinate? coordinate)
     {
-        if (!IsEditingTiles || _map is not { } map || coordinate is not { } clicked)
+        if (!IsEditingTiles
+            || _tool != TileTool.Elevation
+            || _map is not { } map
+            || coordinate is not { } clicked)
             return;
 
         EditElevation(map, clicked, -1);
@@ -2554,6 +2635,55 @@ public partial class MainWindowViewModel : MapViewModelBase
         Tiles = map.Tiles;
 
         ReportEdit(coordinate, $"is at {elevation}.", refused: false);
+    }
+
+    /// <summary>
+    /// Switches one tile of sea between deep and shallow.
+    /// <para>
+    /// A cycle of two, so one click is the whole of it -- see the remarks on
+    /// <see cref="RightClick"/>.
+    /// </para>
+    /// <para>
+    /// The sea only, and it stays sea: this changes how a tile of water is drawn and nothing
+    /// else about it. Depth here is drawn and not modelled -- the sea is all at elevation zero
+    /// and there is no seabed under this map -- so a shallow is a tile of water near enough to
+    /// the shore that a map would paint it paler, and saying which tiles those are is all this
+    /// does. See <see cref="Generation.ShallowsBuilder"/>, which says it for a whole coast at
+    /// once from a distance and a noise field; this is for the tile that pass got wrong.
+    /// </para>
+    /// <para>
+    /// Read back off the tiles by <see cref="CurrentCover"/> like any other cover, so a shelf
+    /// edited here survives every later pass that rebuilds the map -- and is overwritten, like
+    /// every other shallow, the next time Mark Shallows is pressed.
+    /// </para>
+    /// </summary>
+    private void SwitchWater(TileMap map, TileCoordinate coordinate)
+    {
+        if (map[coordinate] is not { } tile)
+            return;
+
+        // Both asked, though on a map as it stands either would do: the sea is the water that
+        // is at sea level, and a river is the water that is not. Asking only the height would
+        // take a lake for the sea if a pass ever left one at zero, and asking only the ground
+        // would take a river for it.
+        if (tile.Elevation > Elevations.Sea || !IsWater(tile))
+        {
+            ReportEdit(coordinate, "is not sea. Only open water has a depth to switch.", refused: true);
+            return;
+        }
+
+        var shallow = CoverOf(tile) is GroundCover.Shallow;
+
+        RememberTileEdit(map);
+
+        map.Edit(editor => editor.Update(coordinate, edited =>
+            Ground(edited, shallow
+                ? MapRenderComponentConstants.DeepWater
+                : MapRenderComponentConstants.ShallowWater)));
+
+        Tiles = map.Tiles;
+
+        ReportEdit(coordinate, shallow ? "is deep." : "is shallow.", refused: false);
     }
 
     /// <summary>

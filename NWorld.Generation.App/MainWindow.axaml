@@ -973,18 +973,16 @@
 
                             <TextBlock Classes="field" Text="TOOL" />
 
-                            <!-- The one tool there is, and so checked in the markup with
-                                 nothing behind it: which tool is armed is not a question yet,
-                                 and a view model property that could only ever answer "that
-                                 one" would be state pretending to be a choice. The group is
-                                 here so the second tool is a second radio and nothing else.
-
-                                 Which button does which is on the line below rather than in
-                                 the label, because it is two facts about one tool. -->
+                            <!-- Which buttons do what is on the line below rather than in the
+                                 labels: it differs by tool, and a label carrying it would be
+                                 the longest thing in the panel to say the smallest. -->
                             <StackPanel Spacing="6" ToolTip.Tip="{Binding TileToolHelp}">
                                 <RadioButton Content="Change elevation"
                                              GroupName="tileTool"
-                                             IsChecked="True" />
+                                             IsChecked="{Binding IsElevationTool}" />
+                                <RadioButton Content="Change water type"
+                                             GroupName="tileTool"
+                                             IsChecked="{Binding IsWaterTool}" />
                             </StackPanel>
 
                             <!-- What the last click did, or what the next one will do. The one
