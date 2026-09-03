@@ -33,6 +33,9 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         public static Guid Sulphur { get; } = new Guid("DDDDDDDD-DDDD-DDDD-DDDD-DDDDDDDDDDDD");
         public static Guid Stone { get; } = new Guid("EEEEEEEE-EEEE-EEEE-EEEE-EEEEEEEEEEEE");
 
+        //Enhancement types: what has been built on a tile, as opposed to what the tile is.
+        public static Guid Road { get; } = new Guid("F0AD0000-F0AD-F0AD-F0AD-F0ADF0ADF0AD");
+
         //Overlay types
         public static Guid ElevationLabel { get; } = new Guid("99999999-9999-9999-9999-999999999999");
     }

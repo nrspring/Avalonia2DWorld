@@ -49,6 +49,31 @@
             <Setter Property="Foreground" Value="{StaticResource TextWarn}" />
         </Style>
 
+        <Style Selector="TextBlock.field">
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <Setter Property="FontSize" Value="9.5" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="LetterSpacing" Value="1" />
+            <Setter Property="Margin" Value="2,0,0,3" />
+        </Style>
+
+        <Style Selector="Border.rule">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Background" Value="#1AFFFFFF" />
+            <Setter Property="Margin" Value="0,2" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="BoxShadow" Value="none" />
+        </Style>
+
+        <Style Selector="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="8,0,0,0" />
+        </Style>
+
         <Style Selector="Button.primary">
             <Setter Property="Background" Value="#4C8DFF" />
             <Setter Property="Foreground" Value="#0B1220" />
@@ -69,6 +94,9 @@
         <map:MapView Tiles="{Binding Tiles}"
                      Renderer="{Binding Renderer}"
                      Options="{Binding Options}"
+                     HoverCommand="{Binding HoverCommand}"
+                     ClickCommand="{Binding ClickCommand}"
+                     RightClickCommand="{Binding RightClickCommand}"
                      ZoomCommand="{Binding ZoomCommand}"
                      MiniMapCommand="{Binding MiniMapCommand}"
                      PanCommand="{Binding PanCommand}" />
@@ -87,6 +115,20 @@
                 <TextBlock Classes="note"
                            Classes.warn="{Binding HasProblem}"
                            Text="{Binding Status}" />
+
+                <Border Classes="rule" />
+
+                <TextBlock Classes="field" Text="ENHANCEMENTS" />
+
+                <!-- A toggle rather than a radio, there being one of these so far: a radio in a
+                     group of one cannot be turned off, and turning building off is the state
+                     this window spends most of its time in. It becomes a radio group the day
+                     there is a second thing to build. -->
+                <CheckBox Content="Road"
+                          IsEnabled="{Binding HasMap}"
+                          IsChecked="{Binding IsBuildingRoads}" />
+
+                <TextBlock Classes="note" Text="{Binding BuildSummary}" />
 
                 <!-- Said here because there is nothing else on screen to discover it from:
                      the map takes the wheel and the right button, and neither is obvious on a
