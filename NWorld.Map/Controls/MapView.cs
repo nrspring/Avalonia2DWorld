@@ -338,7 +338,10 @@ namespace NWorld.Map.Controls
             context.Custom(new MapDrawOperation(
                 new Rect(Bounds.Size),
                 renderer,
-                new RenderFrame(options.TileSize, (float)_animationSeconds),
+                // The whole grid rides along with the frame, not just the screenful below it:
+                // a component that reads its neighbours has to get the same answer for a tile
+                // whether it is in the middle of the window or at its edge. See RenderFrame.
+                new RenderFrame(options.TileSize, (float)_animationSeconds, tiles),
                 tiles,
                 VisibleWindow(tiles, options),
                 OriginPixels(options),

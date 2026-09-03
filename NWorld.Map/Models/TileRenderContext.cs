@@ -47,5 +47,19 @@ namespace NWorld.Map.Models
 
         /// <inheritdoc cref="RenderFrame.TimeSeconds"/>
         public float TimeSeconds => Frame.TimeSeconds;
+
+        /// <summary>
+        /// The whole map, for a component whose shape depends on its neighbours. Null where the
+        /// caller had none to give, so a component that uses it must have something sensible to
+        /// draw without it.
+        /// <para>
+        /// This is the one thing here that reaches outside the batch. <see cref="Tiles"/> is
+        /// only the tiles carrying this component, and only the ones in view; a road needs to
+        /// know about the tile next door whether or not it has a road on it and whether or not
+        /// it is on screen.
+        /// </para>
+        /// </summary>
+        /// <inheritdoc cref="RenderFrame.World" path="/para"/>
+        public TileGrid? World => Frame.World;
     }
 }

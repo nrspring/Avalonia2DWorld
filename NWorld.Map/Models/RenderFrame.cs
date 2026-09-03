@@ -16,7 +16,30 @@ namespace NWorld.Map.Models
     /// their own loop length, which keeps the animation seamless and sidesteps the precision
     /// a float loses over a long session.
     /// </param>
-    public readonly record struct RenderFrame(int TileSize, float TimeSeconds)
+    /// <param name="World">
+    /// The whole map, for a component that has to look at a tile other than the one it is
+    /// drawing. Null where the caller has none to give -- a still render or a test.
+    /// <para>
+    /// The <b>whole</b> map, deliberately, and not the screenful being drawn. A component that
+    /// decides its shape from its neighbours -- a road that has to know whether to draw a
+    /// straight, a corner or a junction -- would otherwise get a different answer for a tile at
+    /// the edge of the window than for the same tile once it had been scrolled inland, and the
+    /// map would rearrange itself as it was panned.
+    /// </para>
+    /// <para>
+    /// Safe to read from the render thread on exactly the same terms as the tiles themselves: a
+    /// published <see cref="TileGrid"/>, and every row in it, is never written to again -- an
+    /// edit replaces rows and publishes a new grid. So this is a snapshot, and it is the very
+    /// snapshot the tiles in this frame came out of.
+    /// </para>
+    /// <para>
+    /// Read through <see cref="TileGrid.At"/>, which answers with null off the edge of the map
+    /// so a component drawing a border tile needs no bounds check of its own. Do not hold on to
+    /// it past the frame: it is safe to keep, being immutable, but keeping it pins every tile of
+    /// a map that has otherwise been replaced.
+    /// </para>
+    /// </param>
+    public readonly record struct RenderFrame(int TileSize, float TimeSeconds, TileGrid? World = null)
     {
         /// <summary>A frame with time stopped, for still renders and for tests.</summary>
         public static RenderFrame Still(int tileSize) => new(tileSize, 0f);
