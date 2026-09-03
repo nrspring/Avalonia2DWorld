@@ -83,6 +83,9 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         /// <summary>The same road carried over water.</summary>
         Bridge,
+
+        /// <summary>A piece of a town. Lay them beside each other and the town grows.</summary>
+        City,
     }
 
     /// <summary>Whether clicks do nothing. What the first radio binds to.</summary>
@@ -126,6 +129,18 @@ public partial class MainWindowViewModel : MapViewModelBase
         }
     }
 
+    /// <summary>Whether clicks lay and lift pieces of a town.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingCity
+    {
+        get => _building == Enhancement.City;
+        set
+        {
+            if (value)
+                Arm(Enhancement.City);
+        }
+    }
+
     /// <summary>
     /// Picks up a tool. The line under them goes back to saying what the new one does, because
     /// what it says at the moment is what the last click did with the old one.
@@ -141,6 +156,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(IsBuildingNothing));
         OnPropertyChanged(nameof(IsBuildingRoad));
         OnPropertyChanged(nameof(IsBuildingBridge));
+        OnPropertyChanged(nameof(IsBuildingCity));
         OnPropertyChanged(nameof(BuildSummary));
     }
 
@@ -165,6 +181,7 @@ public partial class MainWindowViewModel : MapViewModelBase
             {
                 Enhancement.Road => "Click dry land to lay a road, or an existing one to lift it.",
                 Enhancement.Bridge => "Click water to lay a bridge, or an existing one to lift it.",
+                Enhancement.City => "Click dry land to build. Tiles beside each other grow into one town.",
                 _ => "Clicks do nothing. Pick something to build.",
             };
 
@@ -225,21 +242,17 @@ public partial class MainWindowViewModel : MapViewModelBase
 
             Report(clicked, standing == MapRenderComponentConstants.Bridge
                 ? "is open water again."
-                : "is clear again.");
+                : standing == MapRenderComponentConstants.City
+                    ? "is pulled down."
+                    : "is clear again.");
 
             return;
         }
 
-        // A road wants ground under it and a bridge wants none. The one rule this app has about
-        // the world it opened, and it is the rule that makes a bridge mean anything: a road that
-        // could be laid over a river would be a road that never needed one.
+        // A road and a town want ground under them; a bridge wants none. The one rule this app
+        // has about the world it opened, and it is the rule that makes a bridge mean anything: a
+        // road that could be laid over a river would be a road that never needed one.
         var wet = IsWater(tile);
-
-        if (_building == Enhancement.Road && wet)
-        {
-            Report(clicked, "is water. A road needs dry ground -- build a bridge.");
-            return;
-        }
 
         if (_building == Enhancement.Bridge && !wet)
         {
@@ -247,9 +260,21 @@ public partial class MainWindowViewModel : MapViewModelBase
             return;
         }
 
-        var laying = _building == Enhancement.Bridge
-            ? MapRenderComponentConstants.Bridge
-            : MapRenderComponentConstants.Road;
+        if (_building != Enhancement.Bridge && wet)
+        {
+            Report(clicked, _building == Enhancement.City
+                ? "is water. Nobody builds a town on it."
+                : "is water. A road needs dry ground -- build a bridge.");
+
+            return;
+        }
+
+        var laying = _building switch
+        {
+            Enhancement.Bridge => MapRenderComponentConstants.Bridge,
+            Enhancement.City => MapRenderComponentConstants.City,
+            _ => MapRenderComponentConstants.Road,
+        };
 
         map.Edit(editor => editor.Update(
             clicked,
@@ -257,7 +282,12 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         Tiles = map.Tiles;
 
-        Report(clicked, _building == Enhancement.Bridge ? "carries a bridge." : "has a road.");
+        Report(clicked, _building switch
+        {
+            Enhancement.Bridge => "carries a bridge.",
+            Enhancement.City => "is built on.",
+            _ => "has a road.",
+        });
     }
 
     /// <summary>
@@ -296,7 +326,8 @@ public partial class MainWindowViewModel : MapViewModelBase
     private static Guid? Built(MapTile tile) =>
         tile.MapRenderComponents.TryGetValue(RenderComponentLayers.Enhancement, out var built)
         && (built.ComponentType == MapRenderComponentConstants.Road
-            || built.ComponentType == MapRenderComponentConstants.Bridge)
+            || built.ComponentType == MapRenderComponentConstants.Bridge
+            || built.ComponentType == MapRenderComponentConstants.City)
             ? built.ComponentType
             : null;
 

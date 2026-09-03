@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.Threading.Tasks;
 using NWorld.Map.Models;
@@ -62,16 +62,35 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 
         private readonly uint _seed;
         private readonly SpanArt _art;
+        private readonly bool _runsWhenAlone;
+        private readonly Func<TileGrid, int, int, int> _mask;
         private readonly ZoomLevelCache<Sprites> _cache;
 
         /// <param name="seed">Fixes the wear and the tone of every stone in this kind of span.</param>
         /// <param name="art">What one shape of it looks like.</param>
-        public StoneSpan(uint seed, SpanArt art)
+        /// <param name="runsWhenAlone">
+        /// Whether a tile with no neighbours still gets a length of the thing running across it.
+        /// True for anything that is a way -- a lone road is a road somebody has started, and a
+        /// square of stone reads as a floor. False for anything that is a place: one tile of town
+        /// with nothing beside it is a hamlet, not a street running out of both sides of itself.
+        /// </param>
+        /// <param name="mask">
+        /// What counts as a neighbour. The default is the whole road network, which is what a
+        /// road and a bridge want; a city wants only more city, since what it is matching across
+        /// the edge is its own streets. See <see cref="RoadNetwork.CityMask"/>.
+        /// </param>
+        public StoneSpan(
+            uint seed,
+            SpanArt art,
+            bool runsWhenAlone = true,
+            Func<TileGrid, int, int, int>? mask = null)
         {
             ArgumentNullException.ThrowIfNull(art);
 
             _seed = seed;
             _art = art;
+            _runsWhenAlone = runsWhenAlone;
+            _mask = mask ?? RoadNetwork.Mask;
             _cache = new ZoomLevelCache<Sprites>(24L * 1024 * 1024, Build);
         }
 
@@ -93,6 +112,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
                 var shape = world is null
                     ? Lone(tile.Params)
                     : Shape(world, tile.X, tile.Y, tile.Params);
+
 
                 // Which laying this tile got, from where it is: fixed for the tile, so it does
                 // not reshuffle itself as the map is panned or the zoom changes, and different
@@ -118,9 +138,9 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// Which of the shapes a tile takes: its neighbour mask, or one of the two lone
         /// orientations when it has no neighbours at all.
         /// </summary>
-        private static int Shape(TileGrid world, int x, int y, string[] parameters)
+        private int Shape(TileGrid world, int x, int y, string[] parameters)
         {
-            var mask = RoadNetwork.Mask(world, x, y);
+            var mask = _mask(world, x, y);
 
             return mask == 0 ? Lone(parameters) : mask;
         }
@@ -186,9 +206,9 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
                 return;
             }
 
-            // A tile with no neighbours still gets a length of it rather than a blob: it is
-            // something somebody has started, and a square of stone reads as a floor.
-            var arms = shape == 0 ? RoadNetwork.East | RoadNetwork.West : shape;
+            var arms = shape == 0 && _runsWhenAlone
+                ? RoadNetwork.East | RoadNetwork.West
+                : shape;
 
             _art(canvas, tileSize, arms, _seed + ((uint)variant * 0x9E3779B9u));
         }

@@ -1,4 +1,4 @@
-using NWorld.Map.Models;
+﻿using NWorld.Map.Models;
 using NWorld.MapServices.Constants;
 
 namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
@@ -48,14 +48,41 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
             | (Carries(world, x - 1, y) ? West : 0);
 
         /// <summary>
-        /// Whether the tile at a map coordinate carries road or bridge. False off the edge of
-        /// the map, which is what makes a road run up to the border and stop rather than reach
-        /// past it.
+        /// Whether the tile at a map coordinate is part of the network: a road, a bridge, or a
+        /// city for them to arrive at. False off the edge of the map, which is what makes a road
+        /// run up to the border and stop rather than reach past it.
+        /// <para>
+        /// A city counts even though it is a place rather than a way. A road that ran up to a
+        /// town and stopped at a stub a tile short of it would be a road to nowhere; counting the
+        /// town here is what carries the road all the way to its edge.
+        /// </para>
         /// </summary>
         public static bool Carries(TileGrid world, int x, int y) =>
             world.At(x, y) is { } tile
             && tile.MapRenderComponents.TryGetValue(RenderComponentLayers.Enhancement, out var built)
             && (built.ComponentType == MapRenderComponentConstants.Road
-                || built.ComponentType == MapRenderComponentConstants.Bridge);
+                || built.ComponentType == MapRenderComponentConstants.Bridge
+                || built.ComponentType == MapRenderComponentConstants.City);
+
+        /// <summary>
+        /// Which sides of a tile have more city on them, as four bits.
+        /// <para>
+        /// A city is built a tile at a time and each tile is a piece of one, so what a piece
+        /// needs to know is not where the roads are but where the rest of the town is: the
+        /// streets and the blocks have to run on across that edge rather than stop at it. A road
+        /// arriving is a road arriving, and the town does nothing about it.
+        /// </para>
+        /// </summary>
+        public static int CityMask(TileGrid world, int x, int y) =>
+            (IsCity(world, x, y - 1) ? North : 0)
+            | (IsCity(world, x + 1, y) ? East : 0)
+            | (IsCity(world, x, y + 1) ? South : 0)
+            | (IsCity(world, x - 1, y) ? West : 0);
+
+        /// <inheritdoc cref="CityMask"/>
+        private static bool IsCity(TileGrid world, int x, int y) =>
+            world.At(x, y) is { } tile
+            && tile.MapRenderComponents.TryGetValue(RenderComponentLayers.Enhancement, out var built)
+            && built.ComponentType == MapRenderComponentConstants.City;
     }
 }

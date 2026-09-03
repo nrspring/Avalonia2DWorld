@@ -140,6 +140,9 @@
                     <RadioButton Content="Bridge"
                                  GroupName="enhancement"
                                  IsChecked="{Binding IsBuildingBridge}" />
+                    <RadioButton Content="City"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingCity}" />
                 </StackPanel>
 
                 <TextBlock Classes="note" Text="{Binding BuildSummary}" />
