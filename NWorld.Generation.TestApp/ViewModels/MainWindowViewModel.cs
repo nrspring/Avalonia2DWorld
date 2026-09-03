@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.IO;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -61,17 +61,88 @@ public partial class MainWindowViewModel : MapViewModelBase
     [ObservableProperty]
     private bool _hasProblem;
 
+    /// <summary>What a click builds, or nothing.</summary>
+    private Enhancement _building = Enhancement.None;
+
     /// <summary>
-    /// Whether clicks lay and lift roads rather than doing nothing.
+    /// What the Enhancements panel can put on a tile.
     /// <para>
-    /// A mode, and the only one so far. The map is the thing on screen and most of what anyone
-    /// does with it is look at it, so building is something you turn on rather than the state
-    /// the window opens in.
+    /// <see cref="None"/> is one of them rather than a separate switch beside them: the map is
+    /// the thing on screen and most of what anyone does with it is look at it, so not building
+    /// is the state this window spends most of its time in and deserves to be as easy to reach
+    /// as the two that build.
     /// </para>
     /// </summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(BuildSummary))]
-    private bool _isBuildingRoads;
+    private enum Enhancement
+    {
+        /// <summary>Clicks do nothing. What the window opens in.</summary>
+        None,
+
+        /// <summary>Stone road, on dry land.</summary>
+        Road,
+
+        /// <summary>The same road carried over water.</summary>
+        Bridge,
+    }
+
+    /// <summary>Whether clicks do nothing. What the first radio binds to.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingNothing
+    {
+        get => _building == Enhancement.None;
+        set
+        {
+            if (value)
+                Arm(Enhancement.None);
+        }
+    }
+
+    /// <summary>
+    /// Whether clicks lay and lift roads.
+    /// <para>
+    /// A boolean each rather than the enum and a converter, for the reason every other choice
+    /// in these apps is one: a boolean is what a radio button binds to.
+    /// </para>
+    /// </summary>
+    public bool IsBuildingRoad
+    {
+        get => _building == Enhancement.Road;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Road);
+        }
+    }
+
+    /// <summary>Whether clicks lay and lift bridges.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingBridge
+    {
+        get => _building == Enhancement.Bridge;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Bridge);
+        }
+    }
+
+    /// <summary>
+    /// Picks up a tool. The line under them goes back to saying what the new one does, because
+    /// what it says at the moment is what the last click did with the old one.
+    /// </summary>
+    private void Arm(Enhancement building)
+    {
+        if (_building == building)
+            return;
+
+        _building = building;
+        _buildReport = null;
+
+        OnPropertyChanged(nameof(IsBuildingNothing));
+        OnPropertyChanged(nameof(IsBuildingRoad));
+        OnPropertyChanged(nameof(IsBuildingBridge));
+        OnPropertyChanged(nameof(BuildSummary));
+    }
 
     /// <summary>Where the pointer is, so the tile under it can be lit.</summary>
     private TileCoordinate? _hovered;
@@ -90,9 +161,12 @@ public partial class MainWindowViewModel : MapViewModelBase
     public string BuildSummary =>
         Tiles is null
             ? "Open a map first."
-            : _buildReport ?? (IsBuildingRoads
-                ? "Click a tile to lay a road, or an existing one to lift it. Right click turns a lone road."
-                : "Roads off. Clicks do nothing.");
+            : _buildReport ?? _building switch
+            {
+                Enhancement.Road => "Click dry land to lay a road, or an existing one to lift it.",
+                Enhancement.Bridge => "Click water to lay a bridge, or an existing one to lift it.",
+                _ => "Clicks do nothing. Pick something to build.",
+            };
 
     /// <inheritdoc cref="BuildSummary"/>
     private string? _buildReport;
@@ -132,25 +206,58 @@ public partial class MainWindowViewModel : MapViewModelBase
     [RelayCommand]
     private void Click(TileCoordinate? coordinate)
     {
-        if (!IsBuildingRoads || _map is not { } map || coordinate is not { } clicked)
+        if (_building == Enhancement.None || _map is not { } map || coordinate is not { } clicked)
             return;
 
         if (map[clicked] is not { } tile)
             return;
 
-        var laid = !HasRoad(tile);
-
-        map.Edit(editor => editor.Update(clicked, edited =>
+        // Lifting is always allowed, whatever is underneath and whichever tool is held: a clear
+        // tile is a state any ground can be in, and being made to switch tools to undo your own
+        // click would be a rule with nothing behind it.
+        if (Built(tile) is { } standing)
         {
-            if (laid)
-                edited.SetEnhancementType(MapRenderComponentConstants.Road, [Turns(_quarters)]);
-            else
-                edited.MapRenderComponents.Remove(RenderComponentLayers.Enhancement);
-        }));
+            map.Edit(editor => editor.Update(
+                clicked,
+                edited => edited.MapRenderComponents.Remove(RenderComponentLayers.Enhancement)));
+
+            Tiles = map.Tiles;
+
+            Report(clicked, standing == MapRenderComponentConstants.Bridge
+                ? "is open water again."
+                : "is clear again.");
+
+            return;
+        }
+
+        // A road wants ground under it and a bridge wants none. The one rule this app has about
+        // the world it opened, and it is the rule that makes a bridge mean anything: a road that
+        // could be laid over a river would be a road that never needed one.
+        var wet = IsWater(tile);
+
+        if (_building == Enhancement.Road && wet)
+        {
+            Report(clicked, "is water. A road needs dry ground -- build a bridge.");
+            return;
+        }
+
+        if (_building == Enhancement.Bridge && !wet)
+        {
+            Report(clicked, "is dry. A bridge needs water under it -- build a road.");
+            return;
+        }
+
+        var laying = _building == Enhancement.Bridge
+            ? MapRenderComponentConstants.Bridge
+            : MapRenderComponentConstants.Road;
+
+        map.Edit(editor => editor.Update(
+            clicked,
+            edited => edited.SetEnhancementType(laying, [Turns(_quarters)])));
 
         Tiles = map.Tiles;
 
-        Report(clicked, laid ? "has a road." : "is clear again.");
+        Report(clicked, _building == Enhancement.Bridge ? "carries a bridge." : "has a road.");
     }
 
     /// <summary>
@@ -165,30 +272,48 @@ public partial class MainWindowViewModel : MapViewModelBase
     [RelayCommand]
     private void RightClick(TileCoordinate? coordinate)
     {
-        if (!IsBuildingRoads || _map is not { } map || coordinate is not { } clicked)
+        if (_building == Enhancement.None || _map is not { } map || coordinate is not { } clicked)
             return;
 
         _quarters = (_quarters + 1) % 4;
 
-        if (map[clicked] is not { } tile || !HasRoad(tile))
+        if (map[clicked] is not { } tile || Built(tile) is not { } standing)
         {
-            Report(clicked, $"nothing to turn. New roads lie {Lie()}.");
+            Report(clicked, $"nothing to turn. New work lies {Lie()}.");
             return;
         }
 
         map.Edit(editor => editor.Update(
             clicked,
-            edited => edited.SetEnhancementType(MapRenderComponentConstants.Road, [Turns(_quarters)])));
+            edited => edited.SetEnhancementType(standing, [Turns(_quarters)])));
 
         Tiles = map.Tiles;
 
         Report(clicked, $"turned. It lies {Lie()} where nothing joins it.");
     }
 
-    /// <summary>Whether a tile already carries a road.</summary>
-    private static bool HasRoad(MapTile tile) =>
+    /// <summary>What is built on a tile, or null where nothing is.</summary>
+    private static Guid? Built(MapTile tile) =>
         tile.MapRenderComponents.TryGetValue(RenderComponentLayers.Enhancement, out var built)
-        && built.ComponentType == MapRenderComponentConstants.Road;
+        && (built.ComponentType == MapRenderComponentConstants.Road
+            || built.ComponentType == MapRenderComponentConstants.Bridge)
+            ? built.ComponentType
+            : null;
+
+    /// <summary>
+    /// Whether a tile is water: the sea at either depth, or a river or lake.
+    /// <para>
+    /// Asked of the ground the tile is drawn with rather than of its height, because the two
+    /// disagree exactly where it matters. A river takes the elevation of the land it runs over,
+    /// so a river tile is high ground by the numbers and very much water to anyone trying to
+    /// cross it -- which is the whole case for building a bridge.
+    /// </para>
+    /// </summary>
+    private static bool IsWater(MapTile tile) =>
+        tile.MapRenderComponents.TryGetValue(RenderComponentLayers.BaseGround, out var ground)
+        && (ground.ComponentType == MapRenderComponentConstants.Water
+            || ground.ComponentType == MapRenderComponentConstants.ShallowWater
+            || ground.ComponentType == MapRenderComponentConstants.DeepWater);
 
     /// <summary>The rotation as a road's one parameter.</summary>
     private static string Turns(int quarters) => quarters.ToString(CultureInfo.InvariantCulture);
@@ -203,11 +328,6 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(BuildSummary));
     }
 
-    /// <summary>
-    /// The line under the toggle goes back to saying what the mode does, since what it says at
-    /// the moment is what the last click did in the other one.
-    /// </summary>
-    partial void OnIsBuildingRoadsChanged(bool value) => _buildReport = null;
 
     /// <summary>
     /// Reads a map from <paramref name="stream"/> and puts it on screen.

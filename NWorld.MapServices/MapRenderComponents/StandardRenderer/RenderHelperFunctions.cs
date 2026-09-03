@@ -34,6 +34,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
             { MapRenderComponentConstants.Sulphur, new(RenderSulphur.Render, RenderSulphur.Prewarm, RenderSulphur.ClearCache) },
             { MapRenderComponentConstants.Stone, new(RenderStone.Render, RenderStone.Prewarm, RenderStone.ClearCache) },
             { MapRenderComponentConstants.Road, new(RenderRoad.Render, RenderRoad.Prewarm, RenderRoad.ClearCache) },
+            { MapRenderComponentConstants.Bridge, new(RenderBridge.Render, RenderBridge.Prewarm, RenderBridge.ClearCache) },
             { MapRenderComponentConstants.Hover, new(RenderHover.Render, RenderHover.Prewarm, RenderHover.ClearCache) },
             { MapRenderComponentConstants.Selected, new(RenderSelected.Render, RenderSelected.Prewarm, RenderSelected.ClearCache) },
             { MapRenderComponentConstants.Range, new(RenderRange.Render) },

@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -67,6 +67,13 @@
             <Setter Property="BoxShadow" Value="none" />
         </Style>
 
+        <Style Selector="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="8,0,0,0" />
+        </Style>
+
         <Style Selector="CheckBox">
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
             <Setter Property="FontSize" Value="12" />
@@ -120,13 +127,20 @@
 
                 <TextBlock Classes="field" Text="ENHANCEMENTS" />
 
-                <!-- A toggle rather than a radio, there being one of these so far: a radio in a
-                     group of one cannot be turned off, and turning building off is the state
-                     this window spends most of its time in. It becomes a radio group the day
-                     there is a second thing to build. -->
-                <CheckBox Content="Road"
-                          IsEnabled="{Binding HasMap}"
-                          IsChecked="{Binding IsBuildingRoads}" />
+                <!-- Off is one of the choices rather than a switch beside them, so that not
+                     building, which is what this window is doing most of the time, is as
+                     easy to reach as the two that build. -->
+                <StackPanel Spacing="6" IsEnabled="{Binding HasMap}">
+                    <RadioButton Content="Off"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingNothing}" />
+                    <RadioButton Content="Road"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingRoad}" />
+                    <RadioButton Content="Bridge"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingBridge}" />
+                </StackPanel>
 
                 <TextBlock Classes="note" Text="{Binding BuildSummary}" />
 
