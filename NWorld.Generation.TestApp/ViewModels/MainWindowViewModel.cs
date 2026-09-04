@@ -95,6 +95,9 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         /// <summary>A piece of a town. Lay them beside each other and the town grows.</summary>
         City,
+
+        /// <summary>A walled fort, whole on its one tile.</summary>
+        Fort,
     }
 
     /// <summary>Whether clicks do nothing. What the first radio binds to.</summary>
@@ -150,6 +153,18 @@ public partial class MainWindowViewModel : MapViewModelBase
         }
     }
 
+    /// <summary>Whether clicks build and pull down forts.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingFort
+    {
+        get => _building == Enhancement.Fort;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Fort);
+        }
+    }
+
     /// <summary>
     /// Picks up a tool. The line under them goes back to saying what the new one does, because
     /// what it says at the moment is what the last click did with the old one.
@@ -166,6 +181,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(IsBuildingRoad));
         OnPropertyChanged(nameof(IsBuildingBridge));
         OnPropertyChanged(nameof(IsBuildingCity));
+        OnPropertyChanged(nameof(IsBuildingFort));
         OnPropertyChanged(nameof(BuildSummary));
     }
 
@@ -191,6 +207,7 @@ public partial class MainWindowViewModel : MapViewModelBase
                 Enhancement.Road => "Click dry land to lay a road, or an existing one to lift it.",
                 Enhancement.Bridge => "Click water to lay a bridge, or an existing one to lift it.",
                 Enhancement.City => "Click dry land to build. Tiles beside each other grow into one town.",
+                Enhancement.Fort => "Click dry land to build. A gate opens on whichever side a road reaches it.",
                 _ => "Clicks do nothing. Pick something to build.",
             };
 
@@ -252,6 +269,7 @@ public partial class MainWindowViewModel : MapViewModelBase
             Report(clicked, standing == MapRenderComponentConstants.Bridge
                 ? "is open water again."
                 : standing == MapRenderComponentConstants.City
+                  || standing == MapRenderComponentConstants.Fort
                     ? "is pulled down."
                     : "is clear again.");
 
@@ -271,9 +289,12 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         if (_building != Enhancement.Bridge && wet)
         {
-            Report(clicked, _building == Enhancement.City
-                ? "is water. Nobody builds a town on it."
-                : "is water. A road needs dry ground -- build a bridge.");
+            Report(clicked, _building switch
+            {
+                Enhancement.City => "is water. Nobody builds a town on it.",
+                Enhancement.Fort => "is water. A fort wants ground to stand on.",
+                _ => "is water. A road needs dry ground -- build a bridge.",
+            });
 
             return;
         }
@@ -282,6 +303,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         {
             Enhancement.Bridge => MapRenderComponentConstants.Bridge,
             Enhancement.City => MapRenderComponentConstants.City,
+            Enhancement.Fort => MapRenderComponentConstants.Fort,
             _ => MapRenderComponentConstants.Road,
         };
 
@@ -295,6 +317,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         {
             Enhancement.Bridge => "carries a bridge.",
             Enhancement.City => "is built on.",
+            Enhancement.Fort => "holds a fort.",
             _ => "has a road.",
         });
     }
@@ -336,7 +359,8 @@ public partial class MainWindowViewModel : MapViewModelBase
         tile.MapRenderComponents.TryGetValue(RenderComponentLayers.Enhancement, out var built)
         && (built.ComponentType == MapRenderComponentConstants.Road
             || built.ComponentType == MapRenderComponentConstants.Bridge
-            || built.ComponentType == MapRenderComponentConstants.City)
+            || built.ComponentType == MapRenderComponentConstants.City
+            || built.ComponentType == MapRenderComponentConstants.Fort)
             ? built.ComponentType
             : null;
 

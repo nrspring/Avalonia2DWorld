@@ -37,6 +37,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         public static Guid Road { get; } = new Guid("F0AD0000-F0AD-F0AD-F0AD-F0ADF0ADF0AD");
         public static Guid Bridge { get; } = new Guid("B41D6E00-B41D-B41D-B41D-B41DB41DB41D");
         public static Guid City { get; } = new Guid("C17700FF-C177-C177-C177-C177C177C177");
+        public static Guid Fort { get; } = new Guid("F0770000-F077-F077-F077-F077F077F077");
 
         //Overlay types
         public static Guid ElevationLabel { get; } = new Guid("99999999-9999-9999-9999-999999999999");

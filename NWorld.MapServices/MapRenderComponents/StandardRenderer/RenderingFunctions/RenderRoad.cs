@@ -15,13 +15,6 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunct
     /// </summary>
     public static class RenderRoad
     {
-        /// <summary>
-        /// How wide the roadway is, as a fraction of the tile. Wide enough to read as a road at
-        /// a glance and narrow enough that the ground it crosses still shows either side, which
-        /// is what keeps a road looking laid on the land rather than cut out of it.
-        /// </summary>
-        private const float Width = 0.56f;
-
         private static readonly StoneSpan Span = new(0x510AD5u, Draw);
 
         public static Task Render(TileRenderContext context) => Span.Render(context);
@@ -36,7 +29,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunct
         private static void Draw(SKCanvas canvas, int tileSize, int arms, uint seed)
         {
             var half = tileSize / 2f;
-            var reach = tileSize * Width / 2f;
+            var reach = tileSize * StoneWork.Way / 2f;
 
             StoneWork.Bedding(canvas, tileSize, StoneWork.Spans(arms, half, reach), seed);
             StoneWork.Verge(canvas, tileSize, arms, half, reach, seed);

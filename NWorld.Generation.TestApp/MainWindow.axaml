@@ -142,7 +142,7 @@
 
                 <!-- Off is one of the choices rather than a switch beside them, so that not
                      building, which is what this window is doing most of the time, is as
-                     easy to reach as the two that build. -->
+                     easy to reach as the ones that build. -->
                 <StackPanel Spacing="6" IsEnabled="{Binding HasMap}">
                     <RadioButton Content="Off"
                                  GroupName="enhancement"
@@ -156,6 +156,9 @@
                     <RadioButton Content="City"
                                  GroupName="enhancement"
                                  IsChecked="{Binding IsBuildingCity}" />
+                    <RadioButton Content="Fort"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingFort}" />
                 </StackPanel>
 
                 <TextBlock Classes="note" Text="{Binding BuildSummary}" />

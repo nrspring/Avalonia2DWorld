@@ -43,6 +43,18 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         ];
 
         /// <summary>
+        /// How wide the roadway is, as a fraction of the tile. Wide enough to read as a road at
+        /// a glance and narrow enough that the ground it crosses still shows either side, which
+        /// is what keeps a road looking laid on the land rather than cut out of it.
+        /// <para>
+        /// Here rather than in <c>RenderRoad</c> because it is not only the road's any more: a
+        /// fort's gateway has to funnel down from exactly this width at the tile edge, or the
+        /// road running into it steps in or out at the join.
+        /// </para>
+        /// </summary>
+        public const float Way = 0.56f;
+
+        /// <summary>
         /// How many stones lie side by side across the way. Two: one is a plank and three are
         /// cobbles, and a paved road at this scale is neither.
         /// </summary>

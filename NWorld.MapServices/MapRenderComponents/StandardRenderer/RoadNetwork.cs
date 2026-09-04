@@ -49,12 +49,18 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 
         /// <summary>
         /// Whether the tile at a map coordinate is part of the network: a road, a bridge, or a
-        /// city for them to arrive at. False off the edge of the map, which is what makes a road
-        /// run up to the border and stop rather than reach past it.
+        /// city or fort for them to arrive at. False off the edge of the map, which is what makes
+        /// a road run up to the border and stop rather than reach past it.
         /// <para>
-        /// A city counts even though it is a place rather than a way. A road that ran up to a
-        /// town and stopped at a stub a tile short of it would be a road to nowhere; counting the
-        /// town here is what carries the road all the way to its edge.
+        /// A city and a fort count even though they are places rather than ways. A road that ran
+        /// up to a town and stopped at a stub a tile short of it would be a road to nowhere;
+        /// counting the town here is what carries the road all the way to its edge.
+        /// </para>
+        /// <para>
+        /// A fort reads this back the other way round as well -- see <c>RenderFort</c>. What it
+        /// takes from its neighbours is not how far to build but which sides to open a gate on,
+        /// so the same four bits that bring the road up to the wall are the ones that put a door
+        /// in it.
         /// </para>
         /// </summary>
         public static bool Carries(TileGrid world, int x, int y) =>
@@ -62,7 +68,8 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
             && tile.MapRenderComponents.TryGetValue(RenderComponentLayers.Enhancement, out var built)
             && (built.ComponentType == MapRenderComponentConstants.Road
                 || built.ComponentType == MapRenderComponentConstants.Bridge
-                || built.ComponentType == MapRenderComponentConstants.City);
+                || built.ComponentType == MapRenderComponentConstants.City
+                || built.ComponentType == MapRenderComponentConstants.Fort);
 
         /// <summary>
         /// Which sides of a tile have more city on them, as four bits.
