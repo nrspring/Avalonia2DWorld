@@ -9,6 +9,7 @@ using NWorld.Map.ViewModels;
 using NWorld.MapServices.Constants;
 using NWorld.MapServices.ExtensionMethods;
 using NWorld.MapServices.MapRenderComponents.StandardRenderer;
+using NWorld.MapServices.Persistence;
 using NWorld.MapServices.Renderers;
 
 namespace NWorld.Generation.TestApp.ViewModels;
@@ -21,9 +22,10 @@ namespace NWorld.Generation.TestApp.ViewModels;
 /// opening a file and saying how it went.
 /// </para>
 /// <para>
-/// Nothing edits. A world arrives finished and stays as it was saved: this app exists to look
-/// at one and, in time, to draw what gets built on top of it from somewhere else. There is no
-/// undo here because there is nothing to undo.
+/// The world itself is never edited. It arrives finished and stays as it was saved; what this
+/// app changes is the enhancement layer over it, and that is saved to a file of its own -- see
+/// <see cref="EnhancementFile"/>. Two files, one drawn over the other, and only the second one
+/// is ever written.
 /// </para>
 /// </summary>
 public partial class MainWindowViewModel : MapViewModelBase
@@ -32,11 +34,18 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// The map as it was loaded, or null before one has been opened.
     /// <para>
     /// Kept whole rather than reduced to its <see cref="TileGrid"/>, which is the only part
-    /// drawn today. What comes next here is a second file of improvements laid over these
-    /// tiles, and that needs the map rather than a snapshot of it.
+    /// drawn: what is built on it is laid a tile at a time, and that goes through the map's own
+    /// editor rather than through a snapshot of what it published.
     /// </para>
     /// </summary>
     private TileMap? _map;
+
+    /// <summary>
+    /// What the open world's file was called, without its extension, for suggesting a name to
+    /// save the enhancements under. A world and what was built on it want the same name and
+    /// different extensions, so that a folder of them stays legible.
+    /// </summary>
+    private string? _mapName;
 
     public MainWindowViewModel()
         : base(
@@ -353,10 +362,96 @@ public partial class MainWindowViewModel : MapViewModelBase
     private string Lie() => _quarters % 2 == 0 ? "across" : "up and down";
 
     /// <summary>Says what the last click did, in the line under the toggle.</summary>
-    private void Report(TileCoordinate coordinate, string outcome)
+    private void Report(TileCoordinate coordinate, string outcome) =>
+        Report($"({coordinate.X}, {coordinate.Y}) {outcome}");
+
+    /// <inheritdoc cref="Report(TileCoordinate, string)"/>
+    private void Report(string outcome)
     {
-        _buildReport = $"({coordinate.X}, {coordinate.Y}) {outcome}";
+        _buildReport = outcome;
         OnPropertyChanged(nameof(BuildSummary));
+    }
+
+    /// <summary>
+    /// What to call a file of these, from the world they were built on: the same name, a
+    /// different extension.
+    /// </summary>
+    public string SuggestedEnhancementName =>
+        $"{_mapName ?? "enhancements"}.{EnhancementFile.Extension}";
+
+    /// <summary>
+    /// Writes everything built on the open map to <paramref name="stream"/>.
+    /// <para>
+    /// The world is not written with it and never is. It was finished when it was generated,
+    /// and this app has no business changing it -- see <see cref="EnhancementFile"/> for why
+    /// the two are kept in separate files.
+    /// </para>
+    /// </summary>
+    public void SaveEnhancements(Stream stream)
+    {
+        if (Tiles is not { } tiles)
+            return;
+
+        try
+        {
+            EnhancementFile.Save(stream, tiles);
+            Report(Standing(tiles));
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            Report($"Could not save: {error.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Reads a file of enhancements and lays it over the open map, replacing whatever was built
+    /// there. A file for a differently shaped world is refused rather than half applied.
+    /// </summary>
+    /// <param name="name">What to call the file when saying how it went.</param>
+    public void LoadEnhancements(Stream stream, string name)
+    {
+        if (_map is not { } map)
+            return;
+
+        try
+        {
+            var laid = EnhancementFile.Apply(map, EnhancementFile.Load(stream));
+
+            Tiles = map.Tiles;
+
+            Report(laid == 0
+                ? $"{name} has nothing built in it. The map is clear."
+                : $"Loaded {laid} from {name}.");
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            // The map is untouched: everything that can go wrong here goes wrong while reading
+            // or while checking the shape, both of which happen before a single tile is edited.
+            Report($"Could not load {name}: {error.Message}");
+        }
+    }
+
+    /// <summary>
+    /// How a save went, counted off the map that was just written. Said in tiles because that
+    /// is what was saved: three tiles of town are three entries in the file and one town on
+    /// screen, and a line that claimed either number alone would be wrong half the time.
+    /// </summary>
+    private static string Standing(TileGrid tiles)
+    {
+        var count = 0;
+
+        foreach (var tile in tiles)
+        {
+            if (tile.MapRenderComponents.ContainsKey(RenderComponentLayers.Enhancement))
+                count++;
+        }
+
+        return count switch
+        {
+            0 => "Saved. Nothing is built on this world yet.",
+            1 => "Saved the one built tile.",
+            _ => $"Saved {count} built tiles.",
+        };
     }
 
 
@@ -375,6 +470,7 @@ public partial class MainWindowViewModel : MapViewModelBase
             var map = MapArchive.Load(stream);
 
             _map = map;
+            _mapName = Path.GetFileNameWithoutExtension(name);
 
             // The pointer may well be over the control already, but it is over a different map
             // now, and the highlight it left behind belongs to a tile that no longer exists.

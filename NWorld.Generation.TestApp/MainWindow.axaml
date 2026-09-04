@@ -92,6 +92,19 @@
             <Setter Property="HorizontalContentAlignment" Value="Center" />
         </Style>
 
+        <!-- Opening a world is the one thing this window cannot do without, so it gets the
+             filled button. Saving and loading what was built on it are ordinary work and sit
+             back a step, which is also what stops the card reading as three equal choices. -->
+        <Style Selector="Button.minor">
+            <Setter Property="Background" Value="#1FFFFFFF" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+
     </Window.Styles>
 
     <!-- The map fills the window and the one control floats over it, the same arrangement the
@@ -146,6 +159,21 @@
                 </StackPanel>
 
                 <TextBlock Classes="note" Text="{Binding BuildSummary}" />
+
+                <!-- What was built is saved beside the world, never into it: the world is
+                     finished when it is generated and this window only ever writes the layer
+                     over it. The line above doubles as the report, since saving and loading
+                     are the same subject as the clicks that made the thing being saved. -->
+                <Grid ColumnDefinitions="*,8,*" IsEnabled="{Binding HasMap}">
+                    <Button Grid.Column="0"
+                            Classes="minor"
+                            Content="Save built"
+                            Click="OnSaveEnhancementsClick" />
+                    <Button Grid.Column="2"
+                            Classes="minor"
+                            Content="Load built"
+                            Click="OnLoadEnhancementsClick" />
+                </Grid>
 
                 <!-- Said here because there is nothing else on screen to discover it from:
                      the map takes the wheel and the right button, and neither is obvious on a
