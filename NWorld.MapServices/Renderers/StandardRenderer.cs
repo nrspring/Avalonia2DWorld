@@ -40,6 +40,12 @@ namespace NWorld.MapServices.Renderers
         /// </summary>
         private readonly Coastline _coast = new();
 
+        /// <summary>
+        /// The slope where one depth of water meets another. Held per renderer for the reason
+        /// the coast is -- see <see cref="WaterDepth"/>.
+        /// </summary>
+        private readonly WaterDepth _depth = new();
+
         private int _drawing;
 
         public async Task RenderTiles(SKCanvas canvas, RenderFrame frame, IReadOnlyList<MapTile> tiles)
@@ -99,7 +105,7 @@ namespace NWorld.MapServices.Renderers
                 // or a town belongs on top of it and not under it.
                 if (!coastDrawn && key.Layer > RenderComponentLayers.BaseGround)
                 {
-                    _coast.Render(canvas, frame, tiles);
+                    Edges(canvas, frame, tiles);
                     coastDrawn = true;
                 }
 
@@ -114,7 +120,22 @@ namespace NWorld.MapServices.Renderers
 
             // A map with nothing on it but ground never crossed out of that layer above.
             if (!coastDrawn)
-                _coast.Render(canvas, frame, tiles);
+                Edges(canvas, frame, tiles);
+        }
+
+        /// <summary>
+        /// Everything that happens at a boundary between two tiles rather than on one: the
+        /// slope out into deeper water, and then the shore.
+        /// <para>
+        /// The sea is finished before the coast is laid over it, which is the only order these
+        /// two can go in -- the shore is drawn onto the water, so the water underneath it had
+        /// better be the water it is going to end up being.
+        /// </para>
+        /// </summary>
+        private void Edges(SKCanvas canvas, RenderFrame frame, IReadOnlyList<MapTile> tiles)
+        {
+            _depth.Render(canvas, frame, tiles);
+            _coast.Render(canvas, frame, tiles);
         }
 
         private void Collect(SKCanvas canvas, int tileSize, IReadOnlyList<MapTile> tiles)

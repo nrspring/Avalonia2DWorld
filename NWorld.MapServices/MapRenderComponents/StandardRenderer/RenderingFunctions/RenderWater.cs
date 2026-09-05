@@ -26,6 +26,10 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunct
             DepthLattice: 9,
             DepthStrength: 44f));
 
+        /// <summary>The colour of open water at the mean surface.</summary>
+        /// <inheritdoc cref="AnimatedWater.Body" path="/summary"/>
+        public static SKColor Body => Surface.Body;
+
         public static Task Render(TileRenderContext context) => Surface.Render(context);
 
         /// <inheritdoc cref="AnimatedWater.Prewarm"/>

@@ -124,7 +124,14 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// <summary>
         /// What a tile is made of, or null where there is no tile or nothing on its ground
         /// layer.
+        /// <para>
+        /// The type itself rather than a question about it, for the caller that has to tell two
+        /// kinds of water apart rather than water from land -- see <see cref="WaterDepth"/>.
+        /// </para>
         /// </summary>
+        public static Guid? GroundType(TileGrid world, int x, int y) => Ground(world?.At(x, y));
+
+        /// <inheritdoc cref="GroundType"/>
         private static Guid? Ground(MapTile? tile) =>
             tile is not null
             && tile.MapRenderComponents.TryGetValue(RenderComponentLayers.BaseGround, out var ground)

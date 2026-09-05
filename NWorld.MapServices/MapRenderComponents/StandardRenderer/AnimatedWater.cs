@@ -172,6 +172,13 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         [ThreadStatic] private static SKPaint? Scratch;
 
         private readonly WaterStyle _style;
+
+        /// <summary>
+        /// The colour of this water at the mean surface, for anything that has to reason about
+        /// how one kind of water differs from another rather than draw either -- see
+        /// <see cref="WaterDepth"/>, which ramps between two of them across a drop-off.
+        /// </summary>
+        public SKColor Body => _style.Body;
         private readonly ZoomLevelCache<WaveSurface> _surfaces;
 
         /// <summary>
