@@ -37,6 +37,13 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
             { MapRenderComponentConstants.Bridge, new(RenderBridge.Render, RenderBridge.Prewarm, RenderBridge.ClearCache) },
             { MapRenderComponentConstants.City, new(RenderCity.Render, RenderCity.Prewarm, RenderCity.ClearCache) },
             { MapRenderComponentConstants.Fort, new(RenderFort.Render, RenderFort.Prewarm, RenderFort.ClearCache) },
+            { MapRenderComponentConstants.Factory, new(RenderFactory.Render, RenderFactory.Prewarm, RenderFactory.ClearCache) },
+            { MapRenderComponentConstants.Shipyard, new(RenderShipyard.Render, RenderShipyard.Prewarm, RenderShipyard.ClearCache) },
+
+            //No prewarm and no cache: a works is drawn outright rather than blitted, because a
+            //map holds a few dozen of them and caching five kinds against sixteen road shapes
+            //would cost far more than drawing them. See RenderWorks.
+            { MapRenderComponentConstants.Works, new(RenderWorks.Render) },
             { MapRenderComponentConstants.Hover, new(RenderHover.Render, RenderHover.Prewarm, RenderHover.ClearCache) },
             { MapRenderComponentConstants.Selected, new(RenderSelected.Render, RenderSelected.Prewarm, RenderSelected.ClearCache) },
             { MapRenderComponentConstants.Range, new(RenderRange.Render) },

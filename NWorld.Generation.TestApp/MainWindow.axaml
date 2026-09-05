@@ -162,6 +162,15 @@
                     <RadioButton Content="Fort"
                                  GroupName="enhancement"
                                  IsChecked="{Binding IsBuildingFort}" />
+                    <RadioButton Content="Factory"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingFactory}" />
+                    <RadioButton Content="Shipyard"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingShipyard}" />
+                    <RadioButton Content="Works"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingWorks}" />
                     <RadioButton Content="Label"
                                  GroupName="enhancement"
                                  IsChecked="{Binding IsBuildingLabel}" />

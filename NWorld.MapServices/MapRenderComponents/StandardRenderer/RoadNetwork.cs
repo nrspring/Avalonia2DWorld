@@ -52,15 +52,22 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// city or fort for them to arrive at. False off the edge of the map, which is what makes
         /// a road run up to the border and stop rather than reach past it.
         /// <para>
-        /// A city and a fort count even though they are places rather than ways. A road that ran
-        /// up to a town and stopped at a stub a tile short of it would be a road to nowhere;
-        /// counting the town here is what carries the road all the way to its edge.
+        /// A city, a fort, a factory, a shipyard and a works all count even though they are places
+        /// rather than ways. A road that ran up to a town and stopped at a stub a tile short of it would be a
+        /// road to nowhere; counting the place here is what carries the road all the way to its
+        /// edge.
         /// </para>
         /// <para>
-        /// A fort reads this back the other way round as well -- see <c>RenderFort</c>. What it
-        /// takes from its neighbours is not how far to build but which sides to open a gate on,
-        /// so the same four bits that bring the road up to the wall are the ones that put a door
-        /// in it.
+        /// A shipyard is in that list even though it takes its own shape from the water and not
+        /// from this. The two questions are different and both get asked: the yard decides where
+        /// its slips go by looking at the sea, and the road decides whether to keep going by
+        /// looking at the yard.
+        /// </para>
+        /// <para>
+        /// A fort reads this back the other way round as well -- see <c>RenderFort</c>, and
+        /// <c>RenderFactory</c> after it. What they take from their neighbours is not how far to
+        /// build but which sides to open a gate on, so the same four bits that bring the road up
+        /// to the wall are the ones that put a door in it.
         /// </para>
         /// </summary>
         public static bool Carries(TileGrid world, int x, int y) =>
@@ -69,7 +76,10 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
             && (built.ComponentType == MapRenderComponentConstants.Road
                 || built.ComponentType == MapRenderComponentConstants.Bridge
                 || built.ComponentType == MapRenderComponentConstants.City
-                || built.ComponentType == MapRenderComponentConstants.Fort);
+                || built.ComponentType == MapRenderComponentConstants.Fort
+                || built.ComponentType == MapRenderComponentConstants.Factory
+                || built.ComponentType == MapRenderComponentConstants.Shipyard
+                || built.ComponentType == MapRenderComponentConstants.Works);
 
         /// <summary>
         /// Which sides of a tile have more city on them, as four bits.

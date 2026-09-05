@@ -38,6 +38,16 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         public static Guid Bridge { get; } = new Guid("B41D6E00-B41D-B41D-B41D-B41DB41DB41D");
         public static Guid City { get; } = new Guid("C17700FF-C177-C177-C177-C177C177C177");
         public static Guid Fort { get; } = new Guid("F0770000-F077-F077-F077-F077F077F077");
+        public static Guid Factory { get; } = new Guid("FAC70000-FAC7-FAC7-FAC7-FAC7FAC7FAC7");
+
+        //Shaped by the water rather than by the roads -- see RenderShipyard. It is still an
+        //enhancement like the rest: what differs is which neighbours it asks about.
+        public static Guid Shipyard { get; } = new Guid("54170000-5417-5417-5417-541754175417");
+
+        //AD17 for the adit, which is the way into a working -- the rest of these are spelled in
+        //hex the same way. Reads the resource under it to decide what kind of works it is; see
+        //RenderWorks.
+        public static Guid Works { get; } = new Guid("AD170000-AD17-AD17-AD17-AD17AD17AD17");
 
         //Overlay types
         public static Guid ElevationLabel { get; } = new Guid("99999999-9999-9999-9999-999999999999");

@@ -114,6 +114,26 @@ public partial class MainWindowViewModel : MapViewModelBase
         /// <summary>A walled fort, whole on its one tile.</summary>
         Fort,
 
+        /// <summary>A works under a sawtooth roof, with a yard the roads run into.</summary>
+        Factory,
+
+        /// <summary>
+        /// A yard with slipways down into the water, which is why it is the one thing here that
+        /// cannot go just anywhere: it has to be built where there is water to launch into.
+        /// </summary>
+        Shipyard,
+
+        /// <summary>
+        /// Whatever it takes to get a resource out of the ground and make something of it.
+        /// <para>
+        /// The one thing here with no rule about where it goes at all -- not even wet or dry.
+        /// It still takes the kind of works it is from whatever deposit it happens to be
+        /// standing on, and on ground with nothing in it that is a yard and a shed and no
+        /// head-gear, which is a works that has not found anything yet.
+        /// </para>
+        /// </summary>
+        Works,
+
         /// <summary>
         /// Writing on the map, placed where it was clicked rather than on the tile clicked.
         /// <para>
@@ -191,6 +211,42 @@ public partial class MainWindowViewModel : MapViewModelBase
         }
     }
 
+    /// <summary>Whether clicks build and pull down factories.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingFactory
+    {
+        get => _building == Enhancement.Factory;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Factory);
+        }
+    }
+
+    /// <summary>Whether clicks build and pull down shipyards.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingShipyard
+    {
+        get => _building == Enhancement.Shipyard;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Shipyard);
+        }
+    }
+
+    /// <summary>Whether clicks build and pull down works.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingWorks
+    {
+        get => _building == Enhancement.Works;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Works);
+        }
+    }
+
     /// <summary>Whether clicks write on the map and rub the writing out.</summary>
     /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
     public bool IsBuildingLabel
@@ -230,6 +286,9 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(IsBuildingBridge));
         OnPropertyChanged(nameof(IsBuildingCity));
         OnPropertyChanged(nameof(IsBuildingFort));
+        OnPropertyChanged(nameof(IsBuildingFactory));
+        OnPropertyChanged(nameof(IsBuildingShipyard));
+        OnPropertyChanged(nameof(IsBuildingWorks));
         OnPropertyChanged(nameof(IsBuildingLabel));
         OnPropertyChanged(nameof(BuildSummary));
     }
@@ -396,6 +455,9 @@ public partial class MainWindowViewModel : MapViewModelBase
                 Enhancement.Bridge => "Click water to lay a bridge, or an existing one to lift it.",
                 Enhancement.City => "Click dry land to build. Tiles beside each other grow into one town.",
                 Enhancement.Fort => "Click dry land to build. A gate opens on whichever side a road reaches it.",
+                Enhancement.Factory => "Click dry land to build. The yard opens an apron wherever a road reaches it.",
+                Enhancement.Shipyard => "Click dry land beside water. The slips run down whichever sides the water is on.",
+                Enhancement.Works => "Click anywhere. What gets built is whatever the ground it lands on calls for.",
                 Enhancement.Label => _writing.Picked is null
                     ? "Click open ground to write. Click writing to edit it, or drag it somewhere else."
                     : $"Editing \"{_writing.Picked.Text}\". Drag it to move it, or type to change it.",
@@ -466,6 +528,9 @@ public partial class MainWindowViewModel : MapViewModelBase
                 ? "is open water again."
                 : standing == MapRenderComponentConstants.City
                   || standing == MapRenderComponentConstants.Fort
+                  || standing == MapRenderComponentConstants.Factory
+                  || standing == MapRenderComponentConstants.Shipyard
+                  || standing == MapRenderComponentConstants.Works
                     ? "is pulled down."
                     : "is clear again.");
 
@@ -483,15 +548,31 @@ public partial class MainWindowViewModel : MapViewModelBase
             return;
         }
 
-        if (_building != Enhancement.Bridge && wet)
+        // A works is exempt from both halves of the rule below and from the deposit rule that
+        // used to follow it: it goes anywhere, wet or dry, deposit or not. What it draws still
+        // comes off the ground under it, so a works nobody has put on anything is simply a works
+        // with nothing to show yet rather than a thing in the wrong place.
+        if (_building != Enhancement.Bridge && _building != Enhancement.Works && wet)
         {
             Report(clicked, _building switch
             {
                 Enhancement.City => "is water. Nobody builds a town on it.",
                 Enhancement.Fort => "is water. A fort wants ground to stand on.",
+                Enhancement.Factory => "is water. A factory wants ground to stand on.",
+                Enhancement.Shipyard => "is water. A yard is built beside the water, not in it.",
                 _ => "is water. A road needs dry ground -- build a bridge.",
             });
 
+            return;
+        }
+
+        // The one rule about where a thing goes that is not simply wet or dry. A shipyard exists
+        // to put a hull in the water, so it has to be able to reach some -- and the same question
+        // the yard asks when it draws itself is the one asked here, from the same place, so the
+        // yard that gets built is always one that has somewhere to launch into.
+        if (_building == Enhancement.Shipyard && Shoreline.Mask(map.Tiles, clicked.X, clicked.Y) == 0)
+        {
+            Report(clicked, "has no water beside it. A yard needs somewhere to launch into.");
             return;
         }
 
@@ -500,6 +581,9 @@ public partial class MainWindowViewModel : MapViewModelBase
             Enhancement.Bridge => MapRenderComponentConstants.Bridge,
             Enhancement.City => MapRenderComponentConstants.City,
             Enhancement.Fort => MapRenderComponentConstants.Fort,
+            Enhancement.Factory => MapRenderComponentConstants.Factory,
+            Enhancement.Shipyard => MapRenderComponentConstants.Shipyard,
+            Enhancement.Works => MapRenderComponentConstants.Works,
             _ => MapRenderComponentConstants.Road,
         };
 
@@ -514,6 +598,9 @@ public partial class MainWindowViewModel : MapViewModelBase
             Enhancement.Bridge => "carries a bridge.",
             Enhancement.City => "is built on.",
             Enhancement.Fort => "holds a fort.",
+            Enhancement.Factory => "holds a factory.",
+            Enhancement.Shipyard => "holds a yard.",
+            Enhancement.Works => "is being worked.",
             _ => "has a road.",
         });
     }
@@ -679,7 +766,10 @@ public partial class MainWindowViewModel : MapViewModelBase
         && (built.ComponentType == MapRenderComponentConstants.Road
             || built.ComponentType == MapRenderComponentConstants.Bridge
             || built.ComponentType == MapRenderComponentConstants.City
-            || built.ComponentType == MapRenderComponentConstants.Fort)
+            || built.ComponentType == MapRenderComponentConstants.Fort
+            || built.ComponentType == MapRenderComponentConstants.Factory
+            || built.ComponentType == MapRenderComponentConstants.Shipyard
+            || built.ComponentType == MapRenderComponentConstants.Works)
             ? built.ComponentType
             : null;
 
