@@ -9,9 +9,9 @@ using NWorld.Generation.TestApp.Persistence;
 using NWorld.Map.Models;
 using NWorld.Map.ViewModels;
 using NWorld.MapServices.Constants;
+using NWorld.MapServices.Editing;
 using NWorld.MapServices.ExtensionMethods;
 using NWorld.MapServices.MapRenderComponents.StandardRenderer;
-using NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions;
 using NWorld.MapServices.Persistence;
 using NWorld.MapServices.Renderers;
 
@@ -44,16 +44,16 @@ public partial class MainWindowViewModel : MapViewModelBase
     private TileMap? _map;
 
     /// <summary>
-    /// The writing on the open map, as it is being worked on.
+    /// The writing on the open map, and everything done to it.
     /// <para>
-    /// A list of its own and not a layer on the tiles, because a label is placed at a
-    /// <see cref="MapPixel"/> and belongs to no tile -- see <see cref="MapLabel"/>. Kept
-    /// mutable here and published to <see cref="MapViewModelBase.Labels"/> as an array after
-    /// every change, on the same terms as the tiles: what the render thread has been handed is
-    /// never written to again.
+    /// A service and not a list here, because none of what a label tool does is about this
+    /// window: writing one, picking one up, dragging it, changing what it says and rubbing it
+    /// out are the same five things in any app that can write on a map, and the geometry they
+    /// all rest on belongs with the code that draws them. What is left here is which gesture
+    /// means which of the five -- see <see cref="MapLabelEditor"/>.
     /// </para>
     /// </summary>
-    private readonly List<MapLabel> _written = [];
+    private readonly MapLabelEditor _writing = new();
 
     /// <summary>
     /// What the open world's file was called, without its extension, for suggesting a name to
@@ -215,6 +215,16 @@ public partial class MainWindowViewModel : MapViewModelBase
         _building = building;
         _buildReport = null;
 
+        // Putting the label tool down puts down whatever it was holding. What is picked is a
+        // state of that tool, and a label still shown as being edited by a panel that has gone
+        // back to laying roads is a promise the window cannot keep.
+        if (building != Enhancement.Label)
+        {
+            _writing.Unpick();
+            _writing.Drop();
+            OnPropertyChanged(nameof(HasPickedLabel));
+        }
+
         OnPropertyChanged(nameof(IsBuildingNothing));
         OnPropertyChanged(nameof(IsBuildingRoad));
         OnPropertyChanged(nameof(IsBuildingBridge));
@@ -237,13 +247,32 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// </summary>
     private int _quarters;
 
-    /// <summary>What the next label will say. Empty until somebody types something.</summary>
+    /// <summary>
+    /// What the box says: the words of the label being edited, or of the next one to be
+    /// written where none is being edited.
+    /// <para>
+    /// One box for both, and not two, because they are the same question asked a moment apart.
+    /// A label is written by typing and clicking; it is changed by clicking it and typing. Two
+    /// boxes would mean typing the name of a place into the wrong one, which is the sort of
+    /// mistake a window earns by having a box that is only sometimes the one that matters.
+    /// </para>
+    /// </summary>
     [ObservableProperty]
     private string _labelText = "";
 
     /// <summary>
-    /// The colours the next label is written in, as the hex in the two boxes and as the
-    /// colours those last parsed to.
+    /// True while the boxes are being filled in from a label that has just been picked, so that
+    /// filling them in is not mistaken for somebody editing it.
+    /// <para>
+    /// Without it, picking a label would write the label straight back over itself. Harmless as
+    /// it happens, since what is written is what was read -- but it would put an edit through
+    /// on every click, and the first real bug in that arrangement would be very hard to see.
+    /// </para>
+    /// </summary>
+    private bool _filling;
+
+    /// <summary>
+    /// The colours, as the hex in the two boxes and as the colours those last parsed to.
     /// <para>
     /// Both kept, and that is the point: the text is what was typed and stays exactly as typed
     /// while it is being typed, and the colour is the last thing typed that was a colour. A box
@@ -280,6 +309,48 @@ public partial class MainWindowViewModel : MapViewModelBase
         set => SetColour(value, ref _foregroundHex, ref _foreground, nameof(LabelForegroundHex), nameof(LabelForegroundBrush));
     }
 
+    /// <summary>
+    /// Carries a change in the words through to the label being edited. Nothing happens where
+    /// none is: the box is then describing the label that has not been written yet.
+    /// </summary>
+    partial void OnLabelTextChanged(string value) => ApplyEdit();
+
+    /// <summary>
+    /// Writes the boxes onto the picked label, if there is one and this is not the fill that
+    /// put them there in the first place.
+    /// </summary>
+    private void ApplyEdit()
+    {
+        if (_filling || _writing.Picked is null)
+            return;
+
+        if (_writing.Rewrite(LabelText, _background, _foreground))
+        {
+            Publish();
+            Report($"\"{_writing.Picked!.Text}\" changed.");
+        }
+    }
+
+    /// <summary>
+    /// Fills the boxes in from a label that has just been picked, so that what is on the panel
+    /// is what is on the map.
+    /// </summary>
+    private void Fill(MapLabel label)
+    {
+        _filling = true;
+
+        try
+        {
+            LabelText = label.Text;
+            LabelBackgroundHex = MapColour.ToHex(label.Background);
+            LabelForegroundHex = MapColour.ToHex(label.Foreground);
+        }
+        finally
+        {
+            _filling = false;
+        }
+    }
+
     /// <summary>The plate colour as something a swatch can be painted with.</summary>
     public IBrush LabelBackgroundBrush => Swatch(_background);
 
@@ -304,6 +375,8 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(textProperty);
         OnPropertyChanged(brushProperty);
         OnPropertyChanged(nameof(LabelColoursRead));
+
+        ApplyEdit();
     }
 
     /// <summary>A packed colour as a brush, for the swatch beside its box.</summary>
@@ -323,7 +396,9 @@ public partial class MainWindowViewModel : MapViewModelBase
                 Enhancement.Bridge => "Click water to lay a bridge, or an existing one to lift it.",
                 Enhancement.City => "Click dry land to build. Tiles beside each other grow into one town.",
                 Enhancement.Fort => "Click dry land to build. A gate opens on whichever side a road reaches it.",
-                Enhancement.Label => "Click anywhere to write, or on writing to rub it out. Not on a tile -- where you click.",
+                Enhancement.Label => _writing.Picked is null
+                    ? "Click open ground to write. Click writing to edit it, or drag it somewhere else."
+                    : $"Editing \"{_writing.Picked.Text}\". Drag it to move it, or type to change it.",
                 _ => "Clicks do nothing. Pick something to build.",
             };
 
@@ -463,44 +538,105 @@ public partial class MainWindowViewModel : MapViewModelBase
         if (_building != Enhancement.Label || _map is null || point is not { } clicked)
             return;
 
-        if (RenderMapLabel.At(_written, clicked) is { } standing)
+        // Picked first, because a click that lands on writing is about that writing. Only open
+        // ground is an invitation to write something new.
+        if (_writing.Pick(clicked) is { } picked)
         {
-            _written.Remove(standing);
+            Fill(picked);
             Publish();
-            Report($"\"{standing.Text}\" is rubbed out.");
+            Report($"Editing \"{picked.Text}\".");
             return;
         }
 
-        var text = LabelText?.Trim();
-
-        if (string.IsNullOrEmpty(text))
+        if (_writing.Write(clicked, LabelText, _background, _foreground) is { } written)
         {
-            Report("Nothing to write. Put some words in the box first.");
+            Publish();
+            Report($"\"{written.Text}\" written at ({clicked.X:F0}, {clicked.Y:F0}).");
             return;
         }
 
-        _written.Add(new MapLabel
-        {
-            Text = text,
-            Anchor = clicked,
-            Background = _background,
-            Foreground = _foreground,
-        });
-
-        Publish();
-
-        Report($"\"{text}\" written at ({clicked.X:F0}, {clicked.Y:F0}).");
+        Report("Nothing to write. Put some words in the box first.");
     }
 
     /// <summary>
-    /// Hands the writing to the map view as an array of its own.
+    /// Drags a label to somewhere else on the map.
     /// <para>
-    /// A fresh array every time rather than the working list itself: what the render thread has
-    /// been handed must not change under it, and a few dozen labels are not worth the
-    /// row-sharing a map of a million tiles goes to.
+    /// The grab decides the whole gesture: a press that finds writing is a move, and one that
+    /// finds open ground is not a gesture at all -- every move after it does nothing and the
+    /// release, if the pointer stayed put, is a click. That is what lets one button both write
+    /// and rearrange without a mode to switch between them.
     /// </para>
     /// </summary>
-    private void Publish() => Labels = _written.ToArray();
+    [RelayCommand]
+    private void PixelDrag(MapPixelDrag drag)
+    {
+        if (_building != Enhancement.Label || _map is null)
+            return;
+
+        switch (drag.Phase)
+        {
+            case MapDragPhase.Started:
+                if (_writing.Grab(drag.From) && _writing.Picked is { } grabbed)
+                {
+                    Fill(grabbed);
+                    Publish();
+                }
+
+                break;
+
+            case MapDragPhase.Moved:
+                if (_writing.DragTo(drag.At))
+                    Publish();
+                break;
+
+            case MapDragPhase.Finished:
+                // Only where the pointer actually went somewhere. A press and release on the
+                // same spot is a click -- it arrives here first, because every drag gets a
+                // finish whether or not it moved -- and saying a label was moved to where it
+                // already was would be a report of nothing having happened.
+                if (_writing.IsDragging && drag.At != drag.From && _writing.Picked is { } moved)
+                {
+                    Report($"\"{moved.Text}\" moved to ({moved.Anchor.X:F0}, {moved.Anchor.Y:F0}).");
+                }
+
+                // Called whatever happened: the control promises one finish per drag it
+                // started, and answering them all the same way is the point of that promise.
+                _writing.Drop();
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Rubs out the label being edited. A button rather than a click on the map, because every
+    /// click there already means something -- picking the label up is what a click on writing
+    /// has to mean if it is to be draggable -- and a gesture that deleted what it touched would
+    /// be a poor thing to discover by accident.
+    /// </summary>
+    [RelayCommand]
+    private void RubOut()
+    {
+        if (_writing.Remove() is not { } gone)
+            return;
+
+        Publish();
+        Report($"\"{gone.Text}\" is rubbed out.");
+    }
+
+    /// <summary>Whether there is a label being edited, for the buttons that need one.</summary>
+    public bool HasPickedLabel => _writing.Picked is not null;
+
+    /// <summary>
+    /// Hands the writing to the map view, and tells the panel what is picked.
+    /// <para>
+    /// The editor publishes a fresh array after every change rather than handing out its own
+    /// list: what the render thread has been given must not move under it.
+    /// </para>
+    /// </summary>
+    private void Publish()
+    {
+        Labels = _writing.Labels;
+        OnPropertyChanged(nameof(HasPickedLabel));
+    }
 
     /// <summary>
     /// Turns the road under the pointer a quarter, and every road laid after it.
@@ -601,8 +737,8 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         try
         {
-            EnhancementFile.Save(stream, tiles, _written);
-            Report(Standing(tiles, _written.Count));
+            EnhancementFile.Save(stream, tiles, _writing.Labels);
+            Report(Standing(tiles, _writing.Count));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -629,15 +765,14 @@ public partial class MainWindowViewModel : MapViewModelBase
             // to no tile, so there is nothing on the map to lay it on. Replaced rather than
             // merged, for the reason the tiles are -- the file is the layer, not a set of
             // additions to it.
-            _written.Clear();
-            _written.AddRange(document.Labels);
+            _writing.Load(document.Labels);
 
             Tiles = map.Tiles;
             Publish();
 
-            Report(laid == 0 && _written.Count == 0
+            Report(laid == 0 && _writing.Count == 0
                 ? $"{name} has nothing built in it. The map is clear."
-                : $"Loaded {Count(laid, "built tile")} and {Count(_written.Count, "label")} from {name}.");
+                : $"Loaded {Count(laid, "built tile")} and {Count(_writing.Count, "label")} from {name}.");
         }
         catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
         {
@@ -703,7 +838,7 @@ public partial class MainWindowViewModel : MapViewModelBase
 
             // The writing was about the last world. Cleared rather than carried over, since a
             // name for a bay means nothing on a map with a different coastline.
-            _written.Clear();
+            _writing.Clear();
             Publish();
 
             // Back to the map's own corner. Whatever the view was looking at belonged to the

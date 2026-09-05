@@ -120,6 +120,12 @@ namespace NWorld.Map.Controls
         /// handlers ignores the clicks that are not its own.
         /// </para>
         /// <para>
+        /// Fired on release rather than on press, and only when the pointer did not move --
+        /// see <see cref="PixelDragCommandProperty"/>, which is the same button. The tile
+        /// click above still comes on the way down: a tile is either clicked or it is not,
+        /// and there is no gesture it has to be told apart from.
+        /// </para>
+        /// <para>
         /// Not fired over the mini-map inset, for the reason the tile is not: the inset draws
         /// the whole map at its own scale, so the arithmetic would name a point far from the
         /// one being pointed at.
@@ -127,6 +133,31 @@ namespace NWorld.Map.Controls
         /// </summary>
         public static readonly StyledProperty<ICommand?> PixelClickCommandProperty =
             AvaloniaProperty.Register<MapView, ICommand?>(nameof(PixelClickCommand));
+
+        /// <summary>
+        /// Invoked with a <see cref="MapPixelDrag"/> at each step of a left-button drag across
+        /// the map: once as it starts, once per move, and once as it ends. The parameter is
+        /// never null.
+        /// <para>
+        /// The left button, because this is for dragging something that is <em>on</em> the map
+        /// rather than the map itself -- which is the right button's job, and has to stay one
+        /// gesture away from it.
+        /// </para>
+        /// <para>
+        /// The control decides nothing about what is being dragged and does not ask. It reports
+        /// where the button went down and where the pointer has got to, both in map pixels, and
+        /// whether the caller found anything at the first of those is the caller's own affair.
+        /// A drag that grabbed nothing is a drag that does nothing, and it costs a command
+        /// execution per move to find that out.
+        /// </para>
+        /// <para>
+        /// Bind it and the left button carries a drag as well as a click; leave it unbound and
+        /// the button behaves exactly as it did -- nothing is captured and no gesture is
+        /// tracked.
+        /// </para>
+        /// </summary>
+        public static readonly StyledProperty<ICommand?> PixelDragCommandProperty =
+            AvaloniaProperty.Register<MapView, ICommand?>(nameof(PixelDragCommand));
 
         /// <summary>
         /// Invoked with the <see cref="TileCoordinate"/> that was right-clicked. The parameter
@@ -156,7 +187,7 @@ namespace NWorld.Map.Controls
         /// <para>
         /// The right button now carries both, so it does pay that price -- but only on the
         /// button that has nothing to do on the way down. A drag pans from the first move; a
-        /// press and release within <see cref="RightClickSlack"/> of each other never panned
+        /// press and release within <see cref="ClickSlack"/> of each other never panned
         /// anywhere and is handed to <see cref="RightClickCommandProperty"/> instead. Nothing
         /// waits: the pan still starts on the first move, and it is the click that is decided
         /// last, which is the one that can afford to be.
@@ -210,15 +241,21 @@ namespace NWorld.Map.Controls
         private const double MaxAnimationStep = 0.25;
 
         /// <summary>
-        /// How far the pointer may wander between a right press and its release and still count
-        /// as a click rather than a drag.
+        /// How far the pointer may wander between a press and its release and still count as a
+        /// click rather than a drag.
         /// <para>
         /// Not zero, because a hand on a mouse moves a pixel or two on the way to letting go,
         /// and a tool that ignored every second click would read as broken. Small, because the
         /// gesture it has to stay clear of is a deliberate drag across the map.
         /// </para>
+        /// <para>
+        /// One number for both buttons. They carry different pairs of gestures -- the right a
+        /// pan and a click, the left a drag and a click -- but the thing being measured is the
+        /// same hand on the same mouse, and two figures for it would mean the two buttons
+        /// disagreed about what holding still is.
+        /// </para>
         /// </summary>
-        private const double RightClickSlack = 4;
+        private const double ClickSlack = 4;
 
         // Held rather than made per pointer move: the pointer moves a great many times.
         private static readonly Cursor PickCursor = new(StandardCursorType.Hand);
@@ -255,6 +292,27 @@ namespace NWorld.Map.Controls
         /// the pointer. What the release is measured against to tell a click from a drag.
         /// </summary>
         private Point? _rightPressedAt;
+
+        /// <summary>
+        /// Where the left button went down, in map pixels, or null when it is not down over the
+        /// map. Fixed for the whole gesture: it is what every step of a drag is measured from,
+        /// and what tells a click from a drag when the button comes up.
+        /// <para>
+        /// Kept in map pixels rather than in control pixels so that it survives the view moving
+        /// under it -- a wheel turn mid-drag rescales every control pixel and leaves this one
+        /// naming the same piece of ground.
+        /// </para>
+        /// </summary>
+        private MapPixel? _pixelFrom;
+
+        /// <inheritdoc cref="_pixelFrom"/>
+        private Point? _leftPressedAt;
+
+        /// <summary>
+        /// Whether a <see cref="PixelDragCommandProperty"/> gesture is in flight, so that the
+        /// finish is sent once and only for a drag that was started.
+        /// </summary>
+        private bool _dragging;
 
         private TileCoordinate? _hovered;
 
@@ -332,6 +390,13 @@ namespace NWorld.Map.Controls
         {
             get => GetValue(PixelClickCommandProperty);
             set => SetValue(PixelClickCommandProperty, value);
+        }
+
+        /// <inheritdoc cref="PixelDragCommandProperty"/>
+        public ICommand? PixelDragCommand
+        {
+            get => GetValue(PixelDragCommandProperty);
+            set => SetValue(PixelDragCommandProperty, value);
         }
 
         /// <inheritdoc cref="RightClickCommandProperty"/>
@@ -455,6 +520,16 @@ namespace NWorld.Map.Controls
                 return;
             }
 
+            if (_dragging && _pixelFrom is { } grabbed && ToPixel(_pointer.Value) is { } at)
+            {
+                Execute(PixelDragCommand, new MapPixelDrag(grabbed, at, MapDragPhase.Moved));
+                e.Handled = true;
+
+                // The hover is left to follow the pointer as usual. Whatever is being dragged
+                // is over the map, not instead of it, and the tile under the cursor is still
+                // the tile under the cursor.
+            }
+
             SetHovered(ToTile(_pointer.Value));
             UpdateCursor();
         }
@@ -465,7 +540,7 @@ namespace NWorld.Map.Controls
 
             // Not while dragging: the pointer leaving the control during a capture is
             // normal, and the drag is still going on.
-            if (_draggingMiniMap || _panFrom is not null)
+            if (_draggingMiniMap || _panFrom is not null || _dragging)
                 return;
 
             _pointer = null;
@@ -532,10 +607,24 @@ namespace NWorld.Map.Controls
             SetHovered(tile);
             Execute(ClickCommand, tile);
 
-            // The same click again, to the pixel. Both commands see every click; which of them
-            // does anything with it is the caller's business -- see PixelClickCommandProperty.
+            // The pixel half of the same press opens a gesture rather than reporting a click.
+            // What it turns out to have been -- a click, or a drag -- is settled on release;
+            // see PixelClickCommandProperty and PixelDragCommandProperty, which are the two
+            // ways it can end.
             if (ToPixel(position) is { } pixel)
-                Execute(PixelClickCommand, pixel);
+            {
+                _pixelFrom = pixel;
+                _leftPressedAt = position;
+
+                if (PixelDragCommand is not null)
+                {
+                    // Captured so the drag keeps arriving here once the pointer has left the
+                    // control, which is how anything gets dragged to the edge of the map.
+                    e.Pointer.Capture(this);
+                    _dragging = true;
+                    Execute(PixelDragCommand, new MapPixelDrag(pixel, pixel, MapDragPhase.Started));
+                }
+            }
 
             e.Handled = true;
         }
@@ -552,8 +641,8 @@ namespace NWorld.Map.Controls
                 // map out from under the pointer by now and is finished; anything that stayed
                 // put was aimed at the tile it is still over.
                 var clicked = _rightPressedAt is { } from
-                    && Math.Abs(releasedAt.X - from.X) <= RightClickSlack
-                    && Math.Abs(releasedAt.Y - from.Y) <= RightClickSlack;
+                    && Math.Abs(releasedAt.X - from.X) <= ClickSlack
+                    && Math.Abs(releasedAt.Y - from.Y) <= ClickSlack;
 
                 _panFrom = null;
                 _rightPressedAt = null;
@@ -570,6 +659,17 @@ namespace NWorld.Map.Controls
                     Execute(RightClickCommand, tile);
                 }
 
+                return;
+            }
+
+            // The button that started it, not merely a button coming up: a right click taken
+            // while the left one is held would otherwise end the left gesture for it.
+            if (_pixelFrom is not null && e.InitialPressMouseButton == MouseButton.Left)
+            {
+                EndPixelGesture(e.GetPosition(this), clicked: true);
+                e.Pointer.Capture(null);
+                e.Handled = true;
+                UpdateCursor();
                 return;
             }
 
@@ -601,7 +701,61 @@ namespace NWorld.Map.Controls
             _draggingMiniMap = false;
             _panFrom = null;
             _rightPressedAt = null;
+
+            // Finished rather than dropped: a caller that picked something up on the way down
+            // is holding it, and losing the capture is not a reason to make it wait for a
+            // release that is never coming. Never a click -- nobody clicked anything.
+            EndPixelGesture(_pointer, clicked: false);
+
             UpdateCursor();
+        }
+
+        /// <summary>
+        /// Closes the left-button gesture: the drag if one was started, then the click if the
+        /// pointer never left where it went down.
+        /// <para>
+        /// One place, because both ways out of the gesture -- the button coming up, the capture
+        /// going elsewhere -- have to leave exactly the same state behind, and the one that
+        /// does not is the one that leaves the next stray move dragging something.
+        /// </para>
+        /// </summary>
+        /// <param name="releasedAt">
+        /// Where the pointer ended up, or null if that is not known -- a capture lost while the
+        /// pointer was off the control. The drag then finishes where it last was.
+        /// </param>
+        /// <param name="clicked">
+        /// Whether a click is still possible. False where the gesture was cut short rather than
+        /// let go of.
+        /// </param>
+        private void EndPixelGesture(Point? releasedAt, bool clicked)
+        {
+            if (_pixelFrom is not { } from)
+                return;
+
+            var at = releasedAt is { } position ? ToPixel(position) ?? from : from;
+            var dragged = _dragging;
+
+            // Cleared before the commands run: a handler is free to do anything, including
+            // something that comes back through this control, and it should not find a gesture
+            // still standing that has already ended.
+            _pixelFrom = null;
+            _dragging = false;
+
+            var stayedPut = clicked
+                && _leftPressedAt is { } pressed
+                && releasedAt is { } up
+                && Math.Abs(up.X - pressed.X) <= ClickSlack
+                && Math.Abs(up.Y - pressed.Y) <= ClickSlack;
+
+            _leftPressedAt = null;
+
+            if (dragged)
+                Execute(PixelDragCommand, new MapPixelDrag(from, at, MapDragPhase.Finished));
+
+            // After the drag has been closed out, so a handler that puts down what it was
+            // holding has already done so by the time it is told the same spot was clicked.
+            if (stayedPut)
+                Execute(PixelClickCommand, at);
         }
 
         protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
@@ -658,6 +812,11 @@ namespace NWorld.Map.Controls
             _draggingMiniMap = false;
             _panFrom = null;
             _rightPressedAt = null;
+
+            // Told it is over, rather than forgotten: a caller holding something picked up on
+            // the way down gets its finish here as it would anywhere else.
+            EndPixelGesture(_pointer, clicked: false);
+
             _pointer = null;
             Cursor = null;
             SetHovered(null);

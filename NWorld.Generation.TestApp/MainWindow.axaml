@@ -118,6 +118,7 @@
                      HoverCommand="{Binding HoverCommand}"
                      ClickCommand="{Binding ClickCommand}"
                      PixelClickCommand="{Binding PixelClickCommand}"
+                     PixelDragCommand="{Binding PixelDragCommand}"
                      RightClickCommand="{Binding RightClickCommand}"
                      ZoomCommand="{Binding ZoomCommand}"
                      MiniMapCommand="{Binding MiniMapCommand}"
@@ -209,6 +210,14 @@
                     <TextBlock Classes="note warn"
                                IsVisible="{Binding !LabelColoursRead}"
                                Text="One of those is not a colour. #RRGGBB or #AARRGGBB -- the last good one is still in use." />
+
+                    <!-- Rubbing out is a button and not a gesture on the map, because a click
+                         on writing already means picking it up, which is what makes it
+                         draggable. A delete you could trip over would be the worse trade. -->
+                    <Button Classes="minor"
+                            Content="Rub out"
+                            IsEnabled="{Binding HasPickedLabel}"
+                            Command="{Binding RubOutCommand}" />
 
                 </StackPanel>
 
