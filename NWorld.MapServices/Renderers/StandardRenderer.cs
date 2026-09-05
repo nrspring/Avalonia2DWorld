@@ -1,5 +1,6 @@
 ﻿using NWorld.Map.Interfaces;
 using NWorld.Map.Models;
+using NWorld.MapServices.Constants;
 using NWorld.MapServices.MapRenderComponents.StandardRenderer;
 using NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions;
 using SkiaSharp;
@@ -32,6 +33,13 @@ namespace NWorld.MapServices.Renderers
         private readonly Dictionary<BatchKey, int> _index = [];
         private readonly List<BatchKey> _keys = [];
         private readonly List<Batch> _batches = [];
+
+        /// <summary>
+        /// The line where the land meets the water. Held per renderer rather than statically,
+        /// because it keeps a path between frames -- see <see cref="Coastline"/>.
+        /// </summary>
+        private readonly Coastline _coast = new();
+
         private int _drawing;
 
         public async Task RenderTiles(SKCanvas canvas, RenderFrame frame, IReadOnlyList<MapTile> tiles)
@@ -80,8 +88,21 @@ namespace NWorld.MapServices.Renderers
             _keys.Sort(static (a, b) =>
                 a.Layer != b.Layer ? a.Layer.CompareTo(b.Layer) : a.Sequence.CompareTo(b.Sequence));
 
+            var coastDrawn = false;
+
             foreach (var key in _keys)
             {
+                // As the ground finishes and before anything standing on it. The coast is
+                // drawn over the tiles either side of it -- that is how it hides the corners of
+                // the grid, see Coastline -- so it has to come after the last of them; and it
+                // is part of the ground rather than something built on it, so a hover, a road
+                // or a town belongs on top of it and not under it.
+                if (!coastDrawn && key.Layer > RenderComponentLayers.BaseGround)
+                {
+                    _coast.Render(canvas, frame, tiles);
+                    coastDrawn = true;
+                }
+
                 var batch = _batches[_index[key]];
                 if (batch.Count == 0)
                     continue;
@@ -90,6 +111,10 @@ namespace NWorld.MapServices.Renderers
                     new TileRenderContext(canvas, frame, batch.Placements, batch.Count),
                     key.ComponentType);
             }
+
+            // A map with nothing on it but ground never crossed out of that layer above.
+            if (!coastDrawn)
+                _coast.Render(canvas, frame, tiles);
         }
 
         private void Collect(SKCanvas canvas, int tileSize, IReadOnlyList<MapTile> tiles)

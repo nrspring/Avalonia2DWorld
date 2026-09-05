@@ -475,7 +475,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         // A road and a town want ground under them; a bridge wants none. The one rule this app
         // has about the world it opened, and it is the rule that makes a bridge mean anything: a
         // road that could be laid over a river would be a road that never needed one.
-        var wet = IsWater(tile);
+        var wet = Shoreline.IsWater(tile);
 
         if (_building == Enhancement.Bridge && !wet)
         {
@@ -682,21 +682,6 @@ public partial class MainWindowViewModel : MapViewModelBase
             || built.ComponentType == MapRenderComponentConstants.Fort)
             ? built.ComponentType
             : null;
-
-    /// <summary>
-    /// Whether a tile is water: the sea at either depth, or a river or lake.
-    /// <para>
-    /// Asked of the ground the tile is drawn with rather than of its height, because the two
-    /// disagree exactly where it matters. A river takes the elevation of the land it runs over,
-    /// so a river tile is high ground by the numbers and very much water to anyone trying to
-    /// cross it -- which is the whole case for building a bridge.
-    /// </para>
-    /// </summary>
-    private static bool IsWater(MapTile tile) =>
-        tile.MapRenderComponents.TryGetValue(RenderComponentLayers.BaseGround, out var ground)
-        && (ground.ComponentType == MapRenderComponentConstants.Water
-            || ground.ComponentType == MapRenderComponentConstants.ShallowWater
-            || ground.ComponentType == MapRenderComponentConstants.DeepWater);
 
     /// <summary>The rotation as a road's one parameter.</summary>
     private static string Turns(int quarters) => quarters.ToString(CultureInfo.InvariantCulture);
