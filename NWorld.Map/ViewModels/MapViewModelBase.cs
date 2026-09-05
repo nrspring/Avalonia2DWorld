@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using NWorld.Map.Interfaces;
@@ -58,6 +59,25 @@ namespace NWorld.Map.ViewModels
         /// </summary>
         [ObservableProperty]
         private TileGrid? _tiles;
+
+        /// <summary>
+        /// The writing placed on the map, or null before there is any.
+        /// <para>
+        /// Beside <see cref="Tiles"/> rather than in it, because a label is placed by
+        /// <see cref="MapPixel"/> and belongs to no tile -- see <see cref="MapLabel"/>. Held
+        /// here in the base for the same reason the tiles are: every app that can write on a
+        /// map hands the list to the control the same way, and there is nothing about it that
+        /// differs from one to the next.
+        /// </para>
+        /// <para>
+        /// Replaced rather than edited, on the same terms as everything else the render thread
+        /// reads. A derived view model that keeps a working list publishes a copy of it here
+        /// after each change; a fresh array of a few dozen labels is not worth the row-sharing
+        /// <see cref="TileMap"/> goes to for a million tiles.
+        /// </para>
+        /// </summary>
+        [ObservableProperty]
+        private IReadOnlyList<MapLabel>? _labels;
 
         /// <summary>
         /// How the map is drawn. Replaced rather than edited -- <c>Options = Options with

@@ -5,6 +5,7 @@ using NWorld.Map.Interfaces;
 using NWorld.Map.Models;
 using NWorld.MapServices.Constants;
 using NWorld.MapServices.MapRenderComponents.StandardRenderer;
+using NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions;
 using SkiaSharp;
 
 namespace NWorld.MapServices.Renderers
@@ -115,6 +116,18 @@ namespace NWorld.MapServices.Renderers
 
             return Task.CompletedTask;
         }
+
+        /// <summary>
+        /// Draws the labels placed on the map, on top of everything above.
+        /// <para>
+        /// Shared with every other renderer rather than given a look of its own. A label's
+        /// colours are the label's, chosen by whoever wrote it; a picture that restyled them
+        /// would be a picture that changed what somebody said.
+        /// </para>
+        /// </summary>
+        public Task RenderLabels(SKCanvas canvas, RenderFrame frame, IReadOnlyList<MapLabel> labels) =>
+            RenderMapLabel.Render(canvas, frame, labels);
+
 
         private static void Draw(
             ref FillRun run, ReadOnlySpan<MapTile> tiles, int minX, int minY, int maxX, int maxY)

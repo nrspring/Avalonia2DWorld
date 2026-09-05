@@ -49,6 +49,26 @@ namespace NWorld.Map.Controls
             AvaloniaProperty.Register<MapView, TileGrid?>(nameof(Tiles));
 
         /// <summary>
+        /// The writing placed on the map, drawn over the tiles. Null or empty for a map with
+        /// nothing written on it, which is what one opens as.
+        /// <para>
+        /// A list of its own beside <see cref="TilesProperty"/> and not part of it, because a
+        /// label is positioned in <see cref="MapPixel"/> and belongs to no tile -- see
+        /// <see cref="MapLabel"/>. There is nowhere in the grid to put one, and a map may
+        /// carry a hundred labels where it carries a million tiles, so the two want different
+        /// treatment in every respect.
+        /// </para>
+        /// <para>
+        /// Handed to the render thread by reference and read there, on the same terms as the
+        /// tiles: publish a new list rather than editing the one that was assigned. Labels are
+        /// counted in dozens, so a fresh array per edit costs nothing worth the machinery
+        /// <see cref="TileMap"/> needs.
+        /// </para>
+        /// </summary>
+        public static readonly StyledProperty<IReadOnlyList<MapLabel>?> LabelsProperty =
+            AvaloniaProperty.Register<MapView, IReadOnlyList<MapLabel>?>(nameof(Labels));
+
+        /// <summary>
         /// The renderer that draws the tiles. Nothing is drawn while this is null.
         /// <para>
         /// One renderer per control: <see cref="IMapRenderer"/> implementations reuse their
@@ -87,6 +107,26 @@ namespace NWorld.Map.Controls
         /// </summary>
         public static readonly StyledProperty<ICommand?> ClickCommandProperty =
             AvaloniaProperty.Register<MapView, ICommand?>(nameof(ClickCommand));
+
+        /// <summary>
+        /// Invoked with the <see cref="MapPixel"/> that was clicked: the same left click
+        /// <see cref="ClickCommandProperty"/> reports, said to the pixel instead of to the
+        /// tile. The parameter is never null.
+        /// <para>
+        /// As well as that command and not instead of it. The two answer different questions
+        /// about one gesture -- which square was clicked, and where exactly -- and a caller
+        /// that wants both wants them about the same click. Bind whichever say what the tool
+        /// in hand needs; a caller with tile tools and pixel tools binds both and each of its
+        /// handlers ignores the clicks that are not its own.
+        /// </para>
+        /// <para>
+        /// Not fired over the mini-map inset, for the reason the tile is not: the inset draws
+        /// the whole map at its own scale, so the arithmetic would name a point far from the
+        /// one being pointed at.
+        /// </para>
+        /// </summary>
+        public static readonly StyledProperty<ICommand?> PixelClickCommandProperty =
+            AvaloniaProperty.Register<MapView, ICommand?>(nameof(PixelClickCommand));
 
         /// <summary>
         /// Invoked with the <see cref="TileCoordinate"/> that was right-clicked. The parameter
@@ -234,7 +274,8 @@ namespace NWorld.Map.Controls
 
         static MapView()
         {
-            AffectsRender<MapView>(TilesProperty, RendererProperty, OptionsProperty);
+            AffectsRender<MapView>(
+                TilesProperty, LabelsProperty, RendererProperty, OptionsProperty);
         }
 
         public MapView()
@@ -249,6 +290,13 @@ namespace NWorld.Map.Controls
         {
             get => GetValue(TilesProperty);
             set => SetValue(TilesProperty, value);
+        }
+
+        /// <inheritdoc cref="LabelsProperty"/>
+        public IReadOnlyList<MapLabel>? Labels
+        {
+            get => GetValue(LabelsProperty);
+            set => SetValue(LabelsProperty, value);
         }
 
         /// <inheritdoc cref="RendererProperty"/>
@@ -277,6 +325,13 @@ namespace NWorld.Map.Controls
         {
             get => GetValue(ClickCommandProperty);
             set => SetValue(ClickCommandProperty, value);
+        }
+
+        /// <inheritdoc cref="PixelClickCommandProperty"/>
+        public ICommand? PixelClickCommand
+        {
+            get => GetValue(PixelClickCommandProperty);
+            set => SetValue(PixelClickCommandProperty, value);
         }
 
         /// <inheritdoc cref="RightClickCommandProperty"/>
@@ -343,6 +398,7 @@ namespace NWorld.Map.Controls
                 // whether it is in the middle of the window or at its edge. See RenderFrame.
                 new RenderFrame(options.TileSize, (float)_animationSeconds, tiles),
                 tiles,
+                Labels,
                 VisibleWindow(tiles, options),
                 OriginPixels(options),
                 miniMap,
@@ -475,6 +531,12 @@ namespace NWorld.Map.Controls
             // rather than left stale.
             SetHovered(tile);
             Execute(ClickCommand, tile);
+
+            // The same click again, to the pixel. Both commands see every click; which of them
+            // does anything with it is the caller's business -- see PixelClickCommandProperty.
+            if (ToPixel(position) is { } pixel)
+                Execute(PixelClickCommand, pixel);
+
             e.Handled = true;
         }
 
@@ -770,6 +832,28 @@ namespace NWorld.Map.Controls
         }
 
         /// <summary>
+        /// Pixel position within the control to the point on the map it lands on, or null over
+        /// the mini-map inset.
+        /// <para>
+        /// <see cref="ToTile"/> without the rounding down, in the space
+        /// <see cref="MapPixel"/> defines: the same arithmetic, kept fractional and then scaled
+        /// off the zoom, so that a point clicked at one tile size names the same place at every
+        /// other one.
+        /// </para>
+        /// </summary>
+        private MapPixel? ToPixel(Point position)
+        {
+            var options = Options ?? MapViewOptions.Default;
+
+            if (MiniMapRect(Bounds.Size, options) is { } inset && inset.Contains(position))
+                return null;
+
+            return MapPixel.FromTiles(
+                options.OriginX + (position.X / options.TileSize),
+                options.OriginY + (position.Y / options.TileSize));
+        }
+
+        /// <summary>
         /// The origin in whole pixels, which is what the tiles are translated by.
         /// <para>
         /// Rounded, because the render components build their sprites and atlases at whole
@@ -998,6 +1082,7 @@ namespace NWorld.Map.Controls
             IMapRenderer renderer,
             RenderFrame frame,
             TileGrid tiles,
+            IReadOnlyList<MapLabel>? labels,
             IReadOnlyList<MapTile> visible,
             SKPoint originPixels,
             Rect? miniMap,
@@ -1049,6 +1134,13 @@ namespace NWorld.Map.Controls
                         // rather than left dangling so a failed draw surfaces here and not
                         // on the finalizer thread.
                         renderer.RenderTiles(canvas, frame, visible).GetAwaiter().GetResult();
+
+                        // After the tiles and inside the same translate: writing on a map is
+                        // over the map and scrolls with it. Deliberately not in the mini-map
+                        // pass below -- the inset is a picture of where things are, and a name
+                        // written across it at that scale would hide the very thing it names.
+                        if (labels is { Count: > 0 })
+                            renderer.RenderLabels(canvas, frame, labels).GetAwaiter().GetResult();
                     }
                     finally
                     {

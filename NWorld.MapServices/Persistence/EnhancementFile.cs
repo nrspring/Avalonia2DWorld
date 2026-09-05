@@ -25,8 +25,13 @@ namespace NWorld.MapServices.Persistence
     /// map it was built on.
     /// </summary>
     /// <param name="Built">The enhancements, in the reading order they were saved in.</param>
+    /// <param name="Labels">
+    /// The writing placed on the map, in the order it was saved in. Empty where there is none,
+    /// which includes every file written before labels existed.
+    /// </param>
     public sealed record EnhancementDocument(
-        int Width, int Height, int OriginX, int OriginY, IReadOnlyList<Enhancement> Built);
+        int Width, int Height, int OriginX, int OriginY,
+        IReadOnlyList<Enhancement> Built, IReadOnlyList<MapLabel> Labels);
 
     /// <summary>
     /// Reads and writes what has been built on a map, as a file of its own.
@@ -46,6 +51,14 @@ namespace NWorld.MapServices.Persistence
     /// bytes an entry and cost the one property that makes the file worth opening.
     /// </para>
     /// <para>
+    /// Labels ride in the same file, in a list of their own beside the built tiles. They
+    /// belong here for the reason everything else here does -- they are what somebody did to a
+    /// world after it was finished, and the world itself is never written to again -- and they
+    /// are a separate list because they are a separate kind of thing: a label is placed by
+    /// <see cref="MapPixel"/> and has no tile to be found under. A third file would have been
+    /// a third thing to remember to save.
+    /// </para>
+    /// <para>
     /// Only <see cref="RenderComponentLayers.Enhancement"/> is saved, and everything on it is.
     /// This file is that layer, not a list of the kinds of thing this build happens to know how
     /// to draw, so a file written by a later build that has learned something new loses nothing
@@ -61,7 +74,19 @@ namespace NWorld.MapServices.Persistence
         /// Bumped when the shape below changes in a way an older reader would misread.
         /// <see cref="Load"/> refuses anything newer than it knows.
         /// </summary>
-        public const int Version = 1;
+        public const int Version = 2;
+
+        /// <summary>
+        /// What version 2 added: the labels. Version 1 files are read as having none, which is
+        /// what they have.
+        /// <para>
+        /// Bumped rather than slipped in silently, even though an older reader would ignore
+        /// the new list rather than choke on it. Ignoring it is the problem: that build would
+        /// open a map, show none of the writing on it, and drop every word of it on the next
+        /// save. Better it refuses the file and says why.
+        /// </para>
+        /// </summary>
+        private const int LabelsFrom = 2;
 
         private static readonly JsonSerializerOptions Json = new()
         {
@@ -78,7 +103,7 @@ namespace NWorld.MapServices.Persistence
         /// road standing in it.
         /// </para>
         /// </summary>
-        public static void Save(Stream stream, TileGrid tiles)
+        public static void Save(Stream stream, TileGrid tiles, IReadOnlyList<MapLabel>? labels = null)
         {
             ArgumentNullException.ThrowIfNull(stream);
             ArgumentNullException.ThrowIfNull(tiles);
@@ -97,9 +122,31 @@ namespace NWorld.MapServices.Persistence
                 }
             }
 
+            var written = new List<LabelEntry>();
+
+            if (labels is not null)
+            {
+                foreach (var label in labels)
+                {
+                    // A label with nothing written on it is not a label. Dropped rather than
+                    // saved, so that an empty one left behind by a mis-click does not come
+                    // back as an invisible thing to wonder about.
+                    if (label is null || string.IsNullOrWhiteSpace(label.Text))
+                        continue;
+
+                    written.Add(new LabelEntry(
+                        label.Anchor.X,
+                        label.Anchor.Y,
+                        label.Text,
+                        MapColour.ToHex(label.Background),
+                        MapColour.ToHex(label.Foreground)));
+                }
+            }
+
             JsonSerializer.Serialize(
                 stream,
-                new Contents(Version, tiles.Width, tiles.Height, tiles.OriginX, tiles.OriginY, built),
+                new Contents(
+                    Version, tiles.Width, tiles.Height, tiles.OriginX, tiles.OriginY, built, written),
                 Json);
         }
 
@@ -140,7 +187,9 @@ namespace NWorld.MapServices.Persistence
                 throw new InvalidDataException($"A map cannot be {contents.Width} x {contents.Height} tiles.");
 
             return new EnhancementDocument(
-                contents.Width, contents.Height, contents.OriginX, contents.OriginY, contents.Built ?? []);
+                contents.Width, contents.Height, contents.OriginX, contents.OriginY,
+                contents.Built ?? [],
+                Labels(contents));
         }
 
         /// <summary>
@@ -158,8 +207,14 @@ namespace NWorld.MapServices.Persistence
         /// and then loading the enhancements belonging to a different one. A guard, not a
         /// promise.
         /// </para>
+        /// <para>
+        /// The labels in the document are not laid by this and never could be: they belong to
+        /// no tile, so there is nothing here to lay them on. Take
+        /// <see cref="EnhancementDocument.Labels"/> and publish it -- the two halves of a load
+        /// are two calls because they go to two different places.
+        /// </para>
         /// </summary>
-        /// <returns>How many enhancements were laid.</returns>
+        /// <returns>How many enhancements were laid. Labels are not counted; see above.</returns>
         public static int Apply(TileMap map, EnhancementDocument document)
         {
             ArgumentNullException.ThrowIfNull(map);
@@ -208,10 +263,57 @@ namespace NWorld.MapServices.Persistence
         }
 
         /// <summary>
+        /// The labels out of a file, as the map wants them.
+        /// <para>
+        /// Everything read here is checked rather than trusted, the colours above all: this is
+        /// a file people are meant to be able to open and edit, which is most of the reason it
+        /// is JSON, and a hex string somebody has mistyped should cost that label its colour
+        /// and nothing else. A label with no text is dropped -- there is nothing to draw and
+        /// nothing to click on, so it would only be an invisible thing in the file.
+        /// </para>
+        /// </summary>
+        private static List<MapLabel> Labels(Contents contents)
+        {
+            var labels = new List<MapLabel>();
+
+            if (contents.Version < LabelsFrom || contents.Labels is not { } written)
+                return labels;
+
+            foreach (var entry in written)
+            {
+                if (entry is null || string.IsNullOrWhiteSpace(entry.Text))
+                    continue;
+
+                labels.Add(new MapLabel
+                {
+                    Text = entry.Text,
+                    Anchor = new MapPixel(entry.X, entry.Y),
+                    Background = MapColour.FromHex(entry.Background) ?? MapColour.DefaultBackground,
+                    Foreground = MapColour.FromHex(entry.Foreground) ?? MapColour.DefaultForeground,
+                });
+            }
+
+            return labels;
+        }
+
+        /// <summary>
+        /// One label as the file holds it: the anchor in map pixels, the words, and the two
+        /// colours as the hex somebody could read and change by hand.
+        /// <para>
+        /// Not <see cref="MapLabel"/> itself. That one keeps its colours packed into a uint,
+        /// which is what a paint wants and the last thing a person reading the file wants --
+        /// <c>4280424998</c> says nothing whatever, and <c>#E6121A26</c> says most of it.
+        /// </para>
+        /// </summary>
+        private sealed record LabelEntry(
+            double X, double Y, string Text, string Background, string Foreground);
+
+        /// <summary>
         /// What the file holds. The map's shape is written beside the enhancements so the file
         /// says which world it belongs on rather than only what stands on it.
         /// </summary>
         private sealed record Contents(
-            int Version, int Width, int Height, int OriginX, int OriginY, List<Enhancement>? Built);
+            int Version, int Width, int Height, int OriginX, int OriginY,
+            List<Enhancement>? Built, List<LabelEntry>? Labels);
     }
 }

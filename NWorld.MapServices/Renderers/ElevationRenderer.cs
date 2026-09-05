@@ -118,6 +118,18 @@ namespace NWorld.MapServices.Renderers
             }
         }
 
+        /// <summary>
+        /// Draws the labels placed on the map, on top of everything above.
+        /// <para>
+        /// Shared with every other renderer rather than given a look of its own. A label's
+        /// colours are the label's, chosen by whoever wrote it; a picture that restyled them
+        /// would be a picture that changed what somebody said.
+        /// </para>
+        /// </summary>
+        public Task RenderLabels(SKCanvas canvas, RenderFrame frame, IReadOnlyList<MapLabel> labels) =>
+            RenderMapLabel.Render(canvas, frame, labels);
+
+
         private Task Draw(SKCanvas canvas, RenderFrame frame, IReadOnlyList<MapTile> tiles)
         {
             var tileSize = frame.TileSize;

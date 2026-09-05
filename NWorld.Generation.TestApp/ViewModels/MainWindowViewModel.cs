@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using NWorld.Generation.TestApp.Persistence;
@@ -9,6 +11,7 @@ using NWorld.Map.ViewModels;
 using NWorld.MapServices.Constants;
 using NWorld.MapServices.ExtensionMethods;
 using NWorld.MapServices.MapRenderComponents.StandardRenderer;
+using NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions;
 using NWorld.MapServices.Persistence;
 using NWorld.MapServices.Renderers;
 
@@ -39,6 +42,18 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// </para>
     /// </summary>
     private TileMap? _map;
+
+    /// <summary>
+    /// The writing on the open map, as it is being worked on.
+    /// <para>
+    /// A list of its own and not a layer on the tiles, because a label is placed at a
+    /// <see cref="MapPixel"/> and belongs to no tile -- see <see cref="MapLabel"/>. Kept
+    /// mutable here and published to <see cref="MapViewModelBase.Labels"/> as an array after
+    /// every change, on the same terms as the tiles: what the render thread has been handed is
+    /// never written to again.
+    /// </para>
+    /// </summary>
+    private readonly List<MapLabel> _written = [];
 
     /// <summary>
     /// What the open world's file was called, without its extension, for suggesting a name to
@@ -98,6 +113,17 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         /// <summary>A walled fort, whole on its one tile.</summary>
         Fort,
+
+        /// <summary>
+        /// Writing on the map, placed where it was clicked rather than on the tile clicked.
+        /// <para>
+        /// The one tool here that is not an enhancement on a tile, and it sits in the same
+        /// list anyway: to whoever is using this window they are all the same thing -- pick
+        /// something, click the map, get it -- and splitting the list to reflect a difference
+        /// in where the thing is stored would be the storage arranging the panel.
+        /// </para>
+        /// </summary>
+        Label,
     }
 
     /// <summary>Whether clicks do nothing. What the first radio binds to.</summary>
@@ -165,6 +191,18 @@ public partial class MainWindowViewModel : MapViewModelBase
         }
     }
 
+    /// <summary>Whether clicks write on the map and rub the writing out.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingLabel
+    {
+        get => _building == Enhancement.Label;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Label);
+        }
+    }
+
     /// <summary>
     /// Picks up a tool. The line under them goes back to saying what the new one does, because
     /// what it says at the moment is what the last click did with the old one.
@@ -182,6 +220,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(IsBuildingBridge));
         OnPropertyChanged(nameof(IsBuildingCity));
         OnPropertyChanged(nameof(IsBuildingFort));
+        OnPropertyChanged(nameof(IsBuildingLabel));
         OnPropertyChanged(nameof(BuildSummary));
     }
 
@@ -198,6 +237,82 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// </summary>
     private int _quarters;
 
+    /// <summary>What the next label will say. Empty until somebody types something.</summary>
+    [ObservableProperty]
+    private string _labelText = "";
+
+    /// <summary>
+    /// The colours the next label is written in, as the hex in the two boxes and as the
+    /// colours those last parsed to.
+    /// <para>
+    /// Both kept, and that is the point: the text is what was typed and stays exactly as typed
+    /// while it is being typed, and the colour is the last thing typed that was a colour. A box
+    /// that snapped back to the last good value on every keystroke could not be edited at all
+    /// -- "#E6121A26" passes through "#E" on its way to being written.
+    /// </para>
+    /// </summary>
+    private uint _background = MapColour.DefaultBackground;
+
+    /// <inheritdoc cref="_background"/>
+    private uint _foreground = MapColour.DefaultForeground;
+
+    /// <inheritdoc cref="_background"/>
+    private string _backgroundHex = MapColour.ToHex(MapColour.DefaultBackground);
+
+    /// <inheritdoc cref="_background"/>
+    private string _foregroundHex = MapColour.ToHex(MapColour.DefaultForeground);
+
+    /// <summary>
+    /// The plate colour, as <c>#RRGGBB</c> or <c>#AARRGGBB</c>. Hex rather than a colour
+    /// picker: a picker is a package this app does not otherwise need, and the hex is what the
+    /// saved file holds anyway, so what is typed here is what can be read back out of it.
+    /// </summary>
+    public string LabelBackgroundHex
+    {
+        get => _backgroundHex;
+        set => SetColour(value, ref _backgroundHex, ref _background, nameof(LabelBackgroundHex), nameof(LabelBackgroundBrush));
+    }
+
+    /// <summary>The colour of the writing itself, in the same hex.</summary>
+    public string LabelForegroundHex
+    {
+        get => _foregroundHex;
+        set => SetColour(value, ref _foregroundHex, ref _foreground, nameof(LabelForegroundHex), nameof(LabelForegroundBrush));
+    }
+
+    /// <summary>The plate colour as something a swatch can be painted with.</summary>
+    public IBrush LabelBackgroundBrush => Swatch(_background);
+
+    /// <inheritdoc cref="LabelBackgroundBrush"/>
+    public IBrush LabelForegroundBrush => Swatch(_foreground);
+
+    /// <summary>Whether both boxes currently hold something that is a colour.</summary>
+    public bool LabelColoursRead =>
+        MapColour.FromHex(_backgroundHex) is not null && MapColour.FromHex(_foregroundHex) is not null;
+
+    /// <summary>
+    /// Takes a typed colour: the text always, the colour only if the text is one. Says so
+    /// either way, since the swatch beside the box is how anyone can tell which happened.
+    /// </summary>
+    private void SetColour(string? typed, ref string text, ref uint colour, string textProperty, string brushProperty)
+    {
+        text = typed ?? "";
+
+        if (MapColour.FromHex(text) is { } parsed)
+            colour = parsed;
+
+        OnPropertyChanged(textProperty);
+        OnPropertyChanged(brushProperty);
+        OnPropertyChanged(nameof(LabelColoursRead));
+    }
+
+    /// <summary>A packed colour as a brush, for the swatch beside its box.</summary>
+    private static IBrush Swatch(uint colour)
+    {
+        var (alpha, red, green, blue) = MapColour.Channels(colour);
+        return new SolidColorBrush(Color.FromArgb(alpha, red, green, blue));
+    }
+
     /// <summary>What the last click did, or what the next one will do.</summary>
     public string BuildSummary =>
         Tiles is null
@@ -208,6 +323,7 @@ public partial class MainWindowViewModel : MapViewModelBase
                 Enhancement.Bridge => "Click water to lay a bridge, or an existing one to lift it.",
                 Enhancement.City => "Click dry land to build. Tiles beside each other grow into one town.",
                 Enhancement.Fort => "Click dry land to build. A gate opens on whichever side a road reaches it.",
+                Enhancement.Label => "Click anywhere to write, or on writing to rub it out. Not on a tile -- where you click.",
                 _ => "Clicks do nothing. Pick something to build.",
             };
 
@@ -250,6 +366,11 @@ public partial class MainWindowViewModel : MapViewModelBase
     private void Click(TileCoordinate? coordinate)
     {
         if (_building == Enhancement.None || _map is not { } map || coordinate is not { } clicked)
+            return;
+
+        // The same click reaches PixelClick below, which is the half of it the label tool
+        // wants. Both commands see every click and each ignores the ones that are not its own.
+        if (_building == Enhancement.Label)
             return;
 
         if (map[clicked] is not { } tile)
@@ -323,6 +444,65 @@ public partial class MainWindowViewModel : MapViewModelBase
     }
 
     /// <summary>
+    /// Writes on the map where it was clicked, or rubs out the writing that is already there.
+    /// <para>
+    /// The pixel and not the tile, which is the whole of what makes a label different from
+    /// everything else this window builds: a name goes over the thing it names, and the things
+    /// worth naming -- a bay, a range, the far side of a river -- do not begin and end on tile
+    /// boundaries.
+    /// </para>
+    /// <para>
+    /// Rubbing out is a click on the writing, which is the only gesture that could mean it: a
+    /// label covers a patch of map rather than a square, so there is nothing to select it by
+    /// except what it covers.
+    /// </para>
+    /// </summary>
+    [RelayCommand]
+    private void PixelClick(MapPixel? point)
+    {
+        if (_building != Enhancement.Label || _map is null || point is not { } clicked)
+            return;
+
+        if (RenderMapLabel.At(_written, clicked) is { } standing)
+        {
+            _written.Remove(standing);
+            Publish();
+            Report($"\"{standing.Text}\" is rubbed out.");
+            return;
+        }
+
+        var text = LabelText?.Trim();
+
+        if (string.IsNullOrEmpty(text))
+        {
+            Report("Nothing to write. Put some words in the box first.");
+            return;
+        }
+
+        _written.Add(new MapLabel
+        {
+            Text = text,
+            Anchor = clicked,
+            Background = _background,
+            Foreground = _foreground,
+        });
+
+        Publish();
+
+        Report($"\"{text}\" written at ({clicked.X:F0}, {clicked.Y:F0}).");
+    }
+
+    /// <summary>
+    /// Hands the writing to the map view as an array of its own.
+    /// <para>
+    /// A fresh array every time rather than the working list itself: what the render thread has
+    /// been handed must not change under it, and a few dozen labels are not worth the
+    /// row-sharing a map of a million tiles goes to.
+    /// </para>
+    /// </summary>
+    private void Publish() => Labels = _written.ToArray();
+
+    /// <summary>
     /// Turns the road under the pointer a quarter, and every road laid after it.
     /// <para>
     /// Which only shows on a road with nothing beside it. A road that touches another takes its
@@ -334,8 +514,11 @@ public partial class MainWindowViewModel : MapViewModelBase
     [RelayCommand]
     private void RightClick(TileCoordinate? coordinate)
     {
-        if (_building == Enhancement.None || _map is not { } map || coordinate is not { } clicked)
+        if (_building == Enhancement.None || _building == Enhancement.Label
+            || _map is not { } map || coordinate is not { } clicked)
+        {
             return;
+        }
 
         _quarters = (_quarters + 1) % 4;
 
@@ -418,8 +601,8 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         try
         {
-            EnhancementFile.Save(stream, tiles);
-            Report(Standing(tiles));
+            EnhancementFile.Save(stream, tiles, _written);
+            Report(Standing(tiles, _written.Count));
         }
         catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
@@ -439,13 +622,22 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         try
         {
-            var laid = EnhancementFile.Apply(map, EnhancementFile.Load(stream));
+            var document = EnhancementFile.Load(stream);
+            var laid = EnhancementFile.Apply(map, document);
+
+            // The writing goes on beside the built tiles, not through the editor: it belongs
+            // to no tile, so there is nothing on the map to lay it on. Replaced rather than
+            // merged, for the reason the tiles are -- the file is the layer, not a set of
+            // additions to it.
+            _written.Clear();
+            _written.AddRange(document.Labels);
 
             Tiles = map.Tiles;
+            Publish();
 
-            Report(laid == 0
+            Report(laid == 0 && _written.Count == 0
                 ? $"{name} has nothing built in it. The map is clear."
-                : $"Loaded {laid} from {name}.");
+                : $"Loaded {Count(laid, "built tile")} and {Count(_written.Count, "label")} from {name}.");
         }
         catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
         {
@@ -459,8 +651,12 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// How a save went, counted off the map that was just written. Said in tiles because that
     /// is what was saved: three tiles of town are three entries in the file and one town on
     /// screen, and a line that claimed either number alone would be wrong half the time.
+    /// <para>
+    /// The labels are counted separately and not folded in, because they are not tiles and
+    /// there is no number that would be true of both.
+    /// </para>
     /// </summary>
-    private static string Standing(TileGrid tiles)
+    private static string Standing(TileGrid tiles, int labels)
     {
         var count = 0;
 
@@ -470,13 +666,17 @@ public partial class MainWindowViewModel : MapViewModelBase
                 count++;
         }
 
-        return count switch
-        {
-            0 => "Saved. Nothing is built on this world yet.",
-            1 => "Saved the one built tile.",
-            _ => $"Saved {count} built tiles.",
-        };
+        return count == 0 && labels == 0
+            ? "Saved. Nothing is built on this world yet, and nothing is written on it."
+            : $"Saved {Count(count, "built tile")} and {Count(labels, "label")}.";
     }
+
+    /// <summary>
+    /// A count and what it counts, with the plural where there is one. Said the same way
+    /// everywhere so that "1 labels" never appears in this window.
+    /// </summary>
+    private static string Count(int howMany, string thing) =>
+        howMany == 1 ? $"1 {thing}" : $"{howMany} {thing}s";
 
 
     /// <summary>
@@ -500,6 +700,11 @@ public partial class MainWindowViewModel : MapViewModelBase
             // now, and the highlight it left behind belongs to a tile that no longer exists.
             _hovered = null;
             _buildReport = null;
+
+            // The writing was about the last world. Cleared rather than carried over, since a
+            // name for a bay means nothing on a map with a different coastline.
+            _written.Clear();
+            Publish();
 
             // Back to the map's own corner. Whatever the view was looking at belonged to the
             // last map, and a new one scrolled halfway off screen looks like nothing happened.

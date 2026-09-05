@@ -112,10 +112,12 @@
     <Panel Background="#0B1220">
 
         <map:MapView Tiles="{Binding Tiles}"
+                     Labels="{Binding Labels}"
                      Renderer="{Binding Renderer}"
                      Options="{Binding Options}"
                      HoverCommand="{Binding HoverCommand}"
                      ClickCommand="{Binding ClickCommand}"
+                     PixelClickCommand="{Binding PixelClickCommand}"
                      RightClickCommand="{Binding RightClickCommand}"
                      ZoomCommand="{Binding ZoomCommand}"
                      MiniMapCommand="{Binding MiniMapCommand}"
@@ -159,6 +161,55 @@
                     <RadioButton Content="Fort"
                                  GroupName="enhancement"
                                  IsChecked="{Binding IsBuildingFort}" />
+                    <RadioButton Content="Label"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingLabel}" />
+                </StackPanel>
+
+                <!-- Only while the label tool is held. The three boxes belong to that one
+                     tool and to nothing else on the panel, and a window that showed them
+                     all the time would be a window mostly about labels. -->
+                <StackPanel Spacing="6" IsVisible="{Binding IsBuildingLabel}">
+
+                    <TextBlock Classes="field" Text="WORDS" />
+
+                    <TextBox Text="{Binding LabelText}"
+                             Watermark="Bay of Storms"
+                             FontSize="12" />
+
+                    <TextBlock Classes="field" Text="PLATE" />
+
+                    <!-- The swatch beside the box, because hex is not a colour anybody can
+                         see: the square is how you tell #E6121A26 from a typo for it, and
+                         it stops moving the moment what is typed is no longer a colour. -->
+                    <Grid ColumnDefinitions="*,8,24">
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding LabelBackgroundHex}"
+                                 FontSize="12" />
+                        <Border Grid.Column="2"
+                                Background="{Binding LabelBackgroundBrush}"
+                                BorderBrush="#3FFFFFFF"
+                                BorderThickness="1"
+                                CornerRadius="4" />
+                    </Grid>
+
+                    <TextBlock Classes="field" Text="WRITING" />
+
+                    <Grid ColumnDefinitions="*,8,24">
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding LabelForegroundHex}"
+                                 FontSize="12" />
+                        <Border Grid.Column="2"
+                                Background="{Binding LabelForegroundBrush}"
+                                BorderBrush="#3FFFFFFF"
+                                BorderThickness="1"
+                                CornerRadius="4" />
+                    </Grid>
+
+                    <TextBlock Classes="note warn"
+                               IsVisible="{Binding !LabelColoursRead}"
+                               Text="One of those is not a colour. #RRGGBB or #AARRGGBB -- the last good one is still in use." />
+
                 </StackPanel>
 
                 <TextBlock Classes="note" Text="{Binding BuildSummary}" />
