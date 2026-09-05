@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using NWorld.Map.Models;
@@ -15,10 +16,57 @@ namespace NWorld.MapServices.Persistence
     /// <param name="Y"><inheritdoc cref="X" path="/summary"/></param>
     /// <param name="Type">The component type, as <c>MapRenderComponentConstants</c> names it.</param>
     /// <param name="Params">
-    /// Whatever that kind keeps: a road's rotation, say. Null where it keeps nothing, which is
-    /// what a component with no parameters looks like everywhere else.
+    /// Whatever that kind keeps, by name: a road's rotation, say. Null where it keeps nothing,
+    /// which is what a component with no parameters looks like everywhere else.
     /// </param>
-    public sealed record Enhancement(int X, int Y, Guid Type, string[]? Params);
+    public sealed record Enhancement(
+        int X,
+        int Y,
+        Guid Type,
+        [property: JsonConverter(typeof(ParamsConverter))] Dictionary<string, string>? Params);
+
+    /// <summary>
+    /// Reads a component's parameters whether they were written as names or as a bare list.
+    /// <para>
+    /// Files written before version 3 hold <c>["1"]</c> where one written since holds
+    /// <c>{"turns": "1"}</c>. Both are still opened, and a list comes back keyed by the index
+    /// each value sat at -- which is exactly what identified it when that was all there was.
+    /// </para>
+    /// <para>
+    /// A converter rather than a second shape of the whole document, because this is the only
+    /// field that changed and the rest of the file reads the same at every version. Writing is
+    /// left to the default: what goes out is always the new shape.
+    /// </para>
+    /// </summary>
+    internal sealed class ParamsConverter : JsonConverter<Dictionary<string, string>?>
+    {
+        public override Dictionary<string, string>? Read(
+            ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
+        {
+            if (reader.TokenType == JsonTokenType.Null)
+                return null;
+
+            if (reader.TokenType == JsonTokenType.StartObject)
+                return JsonSerializer.Deserialize<Dictionary<string, string>>(ref reader, options);
+
+            if (reader.TokenType != JsonTokenType.StartArray)
+                throw new JsonException("Parameters must be a list or a set of named values.");
+
+            var parameters = new Dictionary<string, string>();
+
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+            {
+                parameters[parameters.Count.ToString(CultureInfo.InvariantCulture)] =
+                    reader.GetString() ?? string.Empty;
+            }
+
+            return parameters.Count == 0 ? null : parameters;
+        }
+
+        public override void Write(
+            Utf8JsonWriter writer, Dictionary<string, string>? value, JsonSerializerOptions options) =>
+            JsonSerializer.Serialize(writer, value, options);
+    }
 
     /// <summary>
     /// Everything read out of an enhancements file: what has been built, and the shape of the
@@ -74,7 +122,15 @@ namespace NWorld.MapServices.Persistence
         /// Bumped when the shape below changes in a way an older reader would misread.
         /// <see cref="Load"/> refuses anything newer than it knows.
         /// </summary>
-        public const int Version = 2;
+        public const int Version = 3;
+
+        /// <summary>
+        /// What version 3 changed: a component's parameters went from a list to named pairs.
+        /// Both shapes are still read -- see <see cref="ParamsConverter"/> -- so the bump is
+        /// only so that an older build refuses a file it would misread rather than half-reading
+        /// it.
+        /// </summary>
+        private const int NamedParamsFrom = 3;
 
         /// <summary>
         /// What version 2 added: the labels. Version 1 files are read as having none, which is
@@ -118,7 +174,7 @@ namespace NWorld.MapServices.Persistence
                         tile.X,
                         tile.Y,
                         component.ComponentType,
-                        component.Params is { Length: > 0 } parameters ? parameters : null));
+                        component.Params is { Count: > 0 } parameters ? parameters : null));
                 }
             }
 

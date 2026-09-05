@@ -589,7 +589,7 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         map.Edit(editor => editor.Update(
             clicked,
-            edited => edited.SetEnhancementType(laying, [Turns(_quarters)])));
+            edited => edited.SetEnhancementType(laying, ComponentParams.ForTurns(_quarters))));
 
         Tiles = map.Tiles;
 
@@ -753,7 +753,7 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         map.Edit(editor => editor.Update(
             clicked,
-            edited => edited.SetEnhancementType(standing, [Turns(_quarters)])));
+            edited => edited.SetEnhancementType(standing, ComponentParams.ForTurns(_quarters))));
 
         Tiles = map.Tiles;
 
@@ -772,9 +772,6 @@ public partial class MainWindowViewModel : MapViewModelBase
             || built.ComponentType == MapRenderComponentConstants.Works)
             ? built.ComponentType
             : null;
-
-    /// <summary>The rotation as a road's one parameter.</summary>
-    private static string Turns(int quarters) => quarters.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>Which way the turn now standing would lay a lone road.</summary>
     private string Lie() => _quarters % 2 == 0 ? "across" : "up and down";

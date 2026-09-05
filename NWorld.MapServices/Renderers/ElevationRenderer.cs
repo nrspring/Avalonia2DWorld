@@ -229,7 +229,8 @@ namespace NWorld.MapServices.Renderers
             if (_labelCount == _labels.Length)
                 Array.Resize(ref _labels, Math.Max(64, _labels.Length * 2));
 
-            _labels[_labelCount++] = new TilePlacement(tile.X, tile.Y, label.Params ?? []);
+            _labels[_labelCount++] =
+                new TilePlacement(tile.X, tile.Y, label.Params ?? MapRenderComponent.None);
         }
 
         /// <summary>

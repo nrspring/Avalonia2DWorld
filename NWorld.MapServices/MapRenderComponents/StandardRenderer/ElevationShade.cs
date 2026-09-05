@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using NWorld.Map.Models;
 using NWorld.MapServices.Constants;
@@ -146,9 +147,8 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// not at all.
         /// </para>
         /// </summary>
-        private static int ElevationOf(string[] parameters) =>
-            parameters.Length > 0 &&
-            int.TryParse(parameters[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var elevation)
+        private static int ElevationOf(IReadOnlyDictionary<string, string> parameters) =>
+            ComponentParams.Int(parameters, ComponentParams.Elevation) is { } elevation
                 ? Math.Clamp(elevation, SeaLevel, MountainsTo)
                 : Ground;
 

@@ -2,6 +2,7 @@
 using System.Globalization;
 using System.Threading.Tasks;
 using NWorld.Map.Models;
+using NWorld.MapServices.Constants;
 using SkiaSharp;
 
 namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
@@ -138,7 +139,8 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// Which of the shapes a tile takes: its neighbour mask, or one of the two lone
         /// orientations when it has no neighbours at all.
         /// </summary>
-        private int Shape(TileGrid world, int x, int y, string[] parameters)
+        private int Shape(
+            TileGrid world, int x, int y, IReadOnlyDictionary<string, string> parameters)
         {
             var mask = _mask(world, x, y);
 
@@ -154,9 +156,8 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// from them and this is not consulted.
         /// </para>
         /// </summary>
-        private static int Lone(string[] parameters) =>
-            parameters.Length > 0
-            && int.TryParse(parameters[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var quarters)
+        private static int Lone(IReadOnlyDictionary<string, string> parameters) =>
+            ComponentParams.Int(parameters, ComponentParams.Turns) is { } quarters
             && (((quarters % 2) + 2) % 2) == 1
                 ? LoneUpright
                 : 0;

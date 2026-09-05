@@ -1,4 +1,5 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 using SkiaSharp;
 
 namespace NWorld.Map.Models
@@ -30,8 +31,13 @@ namespace NWorld.Map.Models
         int Count)
     {
         /// <summary>Context for a single tile, which is mostly useful to tests.</summary>
-        public TileRenderContext(SKCanvas canvas, RenderFrame frame, int x, int y, string[]? parameters = null)
-            : this(canvas, frame, [new TilePlacement(x, y, parameters ?? [])], 1)
+        public TileRenderContext(
+            SKCanvas canvas,
+            RenderFrame frame,
+            int x,
+            int y,
+            IReadOnlyDictionary<string, string>? parameters = null)
+            : this(canvas, frame, [new TilePlacement(x, y, parameters ?? MapRenderComponent.None)], 1)
         {
         }
 

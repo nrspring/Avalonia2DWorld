@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using NWorld.Map.Models;
 
@@ -27,9 +28,21 @@ namespace NWorld.Map.Persistence
     {
         /// <summary>
         /// Bumped when the layout below changes in a way an older reader would misread.
-        /// <see cref="Read"/> refuses anything it does not know.
+        /// <see cref="Read"/> refuses anything newer than it knows and still reads everything
+        /// older.
         /// </summary>
-        public const int Version = 1;
+        public const int Version = 2;
+
+        /// <summary>
+        /// What version 2 changed: a component's parameters went from a list to named pairs.
+        /// <para>
+        /// Version 1 wrote a count and then that many strings, and what each one meant was
+        /// whatever the code reading it happened to think. Version 2 writes a count and then
+        /// that many pairs. Both are read; a version 1 parameter comes back under the index it
+        /// was written at, which is exactly what it was called before it was called anything.
+        /// </para>
+        /// </summary>
+        private const int NamedParamsFrom = 2;
 
         /// <summary>Writes <paramref name="tiles"/> to <paramref name="stream"/>.</summary>
         public static void Write(Stream stream, TileGrid tiles)
@@ -61,18 +74,26 @@ namespace NWorld.Map.Persistence
                     writer.Write(layer);
                     writer.Write(palette[component.ComponentType]);
 
-                    var parameters = component.Params ?? [];
-                    writer.Write((byte)parameters.Length);
+                    var parameters = component.Params;
 
-                    foreach (var parameter in parameters)
-                        writer.Write(parameter ?? string.Empty);
+                    writer.Write((byte)(parameters?.Count ?? 0));
+
+                    if (parameters is null)
+                        continue;
+
+                    foreach (var (name, value) in parameters)
+                    {
+                        writer.Write(name);
+                        writer.Write(value ?? string.Empty);
+                    }
                 }
             }
         }
 
         /// <summary>
-        /// Reads a map back. Throws <see cref="InvalidDataException"/> on anything this
-        /// version cannot read, rather than returning half a map.
+        /// Reads a map back, at any version up to this build's own. Throws
+        /// <see cref="InvalidDataException"/> on anything it cannot read, rather than returning
+        /// half a map.
         /// </summary>
         public static TileMap Read(Stream stream)
         {
@@ -80,11 +101,15 @@ namespace NWorld.Map.Persistence
 
             using var reader = new BinaryReader(stream, System.Text.Encoding.UTF8, leaveOpen: true);
 
+            // Newer refused, older read. A file this build wrote is a file it can read, and the
+            // whole point of a version is that the day the layout changes there is somewhere to
+            // put the old way of reading it -- which there now is, below.
             var version = reader.ReadInt32();
-            if (version != Version)
+
+            if (version < 1 || version > Version)
             {
                 throw new InvalidDataException(
-                    $"Map tiles are version {version}; this build reads version {Version}.");
+                    $"Map tiles are version {version}; this build reads version 1 to {Version}.");
             }
 
             var width = reader.ReadInt32();
@@ -102,10 +127,11 @@ namespace NWorld.Map.Persistence
             // TileMap fills in reading order, which is the order these were written in, so
             // the fill and the file walk the map together and no second copy is needed.
             return new TileMap(width, height, originX, originY, coordinate =>
-                ReadTile(reader, palette, coordinate));
+                ReadTile(reader, palette, version, coordinate));
         }
 
-        private static MapTile ReadTile(BinaryReader reader, Guid[] palette, TileCoordinate coordinate)
+        private static MapTile ReadTile(
+            BinaryReader reader, Guid[] palette, int version, TileCoordinate coordinate)
         {
             var tile = new MapTile
             {
@@ -124,9 +150,20 @@ namespace NWorld.Map.Persistence
                 if (type < 0 || type >= palette.Length)
                     throw new InvalidDataException($"Component type {type} is not in the palette.");
 
-                var parameters = new string[reader.ReadByte()];
-                for (var p = 0; p < parameters.Length; p++)
-                    parameters[p] = reader.ReadString();
+                var count = reader.ReadByte();
+                var parameters = count == 0 ? null : new Dictionary<string, string>(count);
+
+                for (var p = 0; p < count; p++)
+                {
+                    // A version 1 file has no names in it, so the index a parameter was written
+                    // at becomes its name -- see NamedParamsFrom. Nothing is lost: that index is
+                    // precisely what identified it before.
+                    var name = version >= NamedParamsFrom
+                        ? reader.ReadString()
+                        : p.ToString(CultureInfo.InvariantCulture);
+
+                    parameters![name] = reader.ReadString();
+                }
 
                 tile.SetMapRenderComponent(layer, new MapRenderComponent
                 {
@@ -134,7 +171,7 @@ namespace NWorld.Map.Persistence
 
                     // Back to null when there were none, which is what a component with no
                     // parameters looks like everywhere else.
-                    Params = parameters.Length == 0 ? null : parameters,
+                    Params = parameters,
                 });
             }
 

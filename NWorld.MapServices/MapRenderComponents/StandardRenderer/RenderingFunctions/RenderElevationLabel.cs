@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using NWorld.Map.Models;
+using NWorld.MapServices.Constants;
 using SkiaSharp;
 
 namespace NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions
@@ -158,12 +160,10 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunct
         /// would index off the end of it.
         /// </para>
         /// </summary>
-        private static string? Label(string[] parameters)
+        private static string? Label(IReadOnlyDictionary<string, string> parameters)
         {
-            if (parameters.Length == 0 || string.IsNullOrEmpty(parameters[0]))
+            if (ComponentParams.Value(parameters, ComponentParams.Elevation) is not { Length: > 0 } text)
                 return null;
-
-            var text = parameters[0];
 
             foreach (var character in text)
             {

@@ -3126,7 +3126,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         if (ShowElevation && !IsWater(tile))
             tile.SetElevationLabelType(
                 MapRenderComponentConstants.ElevationLabel,
-                [tile.Elevation.ToString(CultureInfo.InvariantCulture)]);
+                ComponentParams.ForElevation(tile.Elevation));
         else
             tile.MapRenderComponents.Remove(RenderComponentLayers.ElevationLabel);
     }
@@ -3251,9 +3251,7 @@ public partial class MainWindowViewModel : MapViewModelBase
     /// </para>
     /// </summary>
     private static void Ground(MapTile tile, Guid groundType) =>
-        tile.SetBaseGroundType(
-            groundType,
-            [tile.Elevation.ToString(CultureInfo.InvariantCulture)]);
+        tile.SetBaseGroundType(groundType, ComponentParams.ForElevation(tile.Elevation));
 
     /// <summary>
     /// One tile of open ocean: deep water, elevation zero. Elevation is set explicitly

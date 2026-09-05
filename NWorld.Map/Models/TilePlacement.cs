@@ -1,3 +1,5 @@
+﻿using System.Collections.Generic;
+
 namespace NWorld.Map.Models
 {
     /// <summary>
@@ -6,7 +8,10 @@ namespace NWorld.Map.Models
     /// <param name="X">Map coordinate, not a pixel offset.</param>
     /// <param name="Y">Map coordinate, not a pixel offset.</param>
     /// <param name="Params">
-    /// The component's own arguments, from <see cref="MapRenderComponent.Params"/>. Usually empty.
+    /// The component's own arguments by name, from <see cref="MapRenderComponent.Params"/>.
+    /// Usually empty -- <see cref="MapRenderComponent.None"/> rather than null, so a render
+    /// function never has to check.
     /// </param>
-    public readonly record struct TilePlacement(int X, int Y, string[] Params);
+    public readonly record struct TilePlacement(
+        int X, int Y, IReadOnlyDictionary<string, string> Params);
 }

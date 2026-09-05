@@ -8,7 +8,7 @@ namespace NWorld.MapServices.ExtensionMethods
     {
         public static void SetBaseGroundType(this Map.Models.MapTile tile, 
                                              Guid baseGroundType,
-                                             string[]? parameters = null)
+                                             Dictionary<string, string>? parameters = null)
         {
             tile.SetMapRenderComponent(Constants.RenderComponentLayers.BaseGround, new Map.Models.MapRenderComponent
             {
@@ -19,7 +19,7 @@ namespace NWorld.MapServices.ExtensionMethods
 
         public static void SetHoverType(this Map.Models.MapTile tile,
                                         Guid hoverType,
-                                        string[]? parameters = null)
+                                        Dictionary<string, string>? parameters = null)
         {
             tile.SetMapRenderComponent(Constants.RenderComponentLayers.Hover, new Map.Models.MapRenderComponent
             {
@@ -30,7 +30,7 @@ namespace NWorld.MapServices.ExtensionMethods
 
         public static void SetResourceType(this Map.Models.MapTile tile,
                                            Guid resourceType,
-                                           string[]? parameters = null)
+                                           Dictionary<string, string>? parameters = null)
         {
             tile.SetMapRenderComponent(Constants.RenderComponentLayers.Resource, new Map.Models.MapRenderComponent
             {
@@ -41,7 +41,7 @@ namespace NWorld.MapServices.ExtensionMethods
 
         public static void SetEnhancementType(this Map.Models.MapTile tile,
                                               Guid enhancementType,
-                                              string[]? parameters = null)
+                                              Dictionary<string, string>? parameters = null)
         {
             tile.SetMapRenderComponent(Constants.RenderComponentLayers.Enhancement, new Map.Models.MapRenderComponent
             {
@@ -52,7 +52,7 @@ namespace NWorld.MapServices.ExtensionMethods
 
         public static void SetUnitType(this Map.Models.MapTile tile,
                                         Guid unitType,
-                                        string[]? parameters = null)
+                                        Dictionary<string, string>? parameters = null)
         {
             tile.SetMapRenderComponent(Constants.RenderComponentLayers.Unit, new Map.Models.MapRenderComponent
             {
@@ -63,7 +63,7 @@ namespace NWorld.MapServices.ExtensionMethods
 
         public static void SetElevationLabelType(this Map.Models.MapTile tile,
                                         Guid elevationLabelType,
-                                        string[]? parameters = null)
+                                        Dictionary<string, string>? parameters = null)
         {
             tile.SetMapRenderComponent(Constants.RenderComponentLayers.ElevationLabel, new Map.Models.MapRenderComponent
             {
