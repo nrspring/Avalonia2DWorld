@@ -181,6 +181,26 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 
         private readonly ZoomLevelCache<Wander> _wander;
 
+        /// <summary>
+        /// The finished band, kept between frames -- see <see cref="HeldPicture"/>.
+        /// <para>
+        /// It passes both of that class's rules, which is what makes this the cheapest thing that
+        /// could have been done about the cost. Nothing here reads the clock: grounds do not
+        /// animate, so the boundary drawn this frame is the boundary drawn last frame, and it was
+        /// being redrawn only because the water moving somewhere else on the map forces a repaint
+        /// of everything. And nothing here reads its backdrop either -- every pass only ever adds
+        /// a ground over what is already there -- so it composites the same held or drawn.
+        /// </para>
+        /// <para>
+        /// It is worth holding because the band is expensive out of all proportion to its size: a
+        /// layer and a filtered mask per pair of grounds, and the winning ground drawn a second
+        /// time across every tile of it. Measured on a real world it cost about a seventh of the
+        /// frame at sixteen pixels a tile and a fifth of it zoomed in, for a fringe a couple of
+        /// tiles wide.
+        /// </para>
+        /// </summary>
+        private readonly HeldPicture _held = new();
+
         private TilePlacement[] _placements = new TilePlacement[256];
 
         public GroundEdge()
@@ -203,12 +223,26 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
             _wander = new ZoomLevelCache<Wander>(MaxCacheBytes, Build);
         }
 
-        /// <summary>Redraws every ground boundary the canvas can show, wandering.</summary>
+        /// <summary>Draws every ground boundary the canvas can show, wandering.</summary>
         public void Render(SKCanvas canvas, RenderFrame frame, IReadOnlyList<MapTile> tiles)
+        {
+            if (canvas is null || tiles is null || frame.World is null || frame.TileSize < MinTileSize)
+                return;
+
+            // Held where there is a device to hold it on; drawn afresh where there is not, which
+            // is a still render, a test, or the pass into the mini-map's raster surface.
+            if (frame.Gpu is not { } gpu || !_held.Draw(canvas, frame, gpu, c => Draw(c, frame, tiles)))
+                Draw(canvas, frame, tiles);
+        }
+
+        /// <inheritdoc cref="HeldPicture.Clear"/>
+        public void Clear() => _held.Clear();
+
+        private void Draw(SKCanvas canvas, RenderFrame frame, IReadOnlyList<MapTile> tiles)
         {
             var tileSize = frame.TileSize;
 
-            if (canvas is null || tiles is null || frame.World is not { } world || tileSize < MinTileSize)
+            if (frame.World is not { } world)
                 return;
 
             for (var i = 0; i < _advance.Length; i++)
