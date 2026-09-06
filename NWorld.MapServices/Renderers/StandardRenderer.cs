@@ -52,6 +52,47 @@ namespace NWorld.MapServices.Renderers
         /// </summary>
         private readonly WaterDepth _depth = new();
 
+        /// <summary>
+        /// Below this many pixels a tile, the whole tile pass is drawn once and then held --
+        /// see <see cref="_still"/>.
+        /// <para>
+        /// Eight because that is about where the moving part of the map stops being motion and
+        /// becomes noise. A wave is a feature a few pixels across; drawn on a tile eight pixels
+        /// wide there is nothing left of it to follow, and the frames spent redrawing it are
+        /// spent on a shimmer nobody is watching. The two thresholds already on the map were set
+        /// on the same judgement and land either side of this one: the drop-off gives up at
+        /// twelve and the shore at six, both because a few pixels of a blurred thing is a smudge
+        /// rather than the thing.
+        /// </para>
+        /// <para>
+        /// It is the one number here worth arguing with. Raise it and more of the map is held
+        /// still, which is faster and, past some point, visibly dead; lower it and the water runs
+        /// further out at the cost of the frames it takes to run.
+        /// </para>
+        /// </summary>
+        public const int StillTileSize = 8;
+
+        /// <summary>
+        /// The whole tile pass, held as a picture while the tiles are too small to be worth
+        /// redrawing -- see <see cref="StillTileSize"/> and <see cref="HeldPicture"/>.
+        /// <para>
+        /// This is the one thing put through <see cref="HeldPicture"/> that <em>does</em> read
+        /// the clock, and holding it deliberately stops that clock: below this zoom the water is
+        /// frozen. That is the whole of the trade and it is meant. What it buys is the rest of
+        /// the pass -- and zoomed out that is nearly the entire frame, because the work follows
+        /// the number of tiles on screen and there are tens of thousands of them. Measured on a
+        /// 600x400 world at six pixels a tile, the tile pass was 63 of a 71 millisecond frame.
+        /// </para>
+        /// <para>
+        /// It is safe to hold as one picture for the reason the drop-off is not safe to hold on
+        /// its own: everything that reads a backdrop is in here <em>with</em> its backdrop. The
+        /// ground is laid down first inside the same picture, so the water has its sea to
+        /// multiply into and the shade its ground to lift, exactly as on the canvas. Nothing may
+        /// be lifted out of this and held separately without answering that question again.
+        /// </para>
+        /// </summary>
+        private readonly HeldPicture _still = new();
+
         private int _drawing;
 
         public async Task RenderTiles(SKCanvas canvas, RenderFrame frame, IReadOnlyList<MapTile> tiles)
@@ -91,6 +132,22 @@ namespace NWorld.MapServices.Renderers
             RenderMapLabel.Render(canvas, frame, labels);
 
         private async Task Draw(SKCanvas canvas, RenderFrame frame, IReadOnlyList<MapTile> tiles)
+        {
+            // Small enough that the map is worth holding still. The pass below runs once into a
+            // picture and the frames after this one blit it -- and it is run here, synchronously,
+            // on the same thread and inside the same guard as an ordinary frame. Every render
+            // function completes synchronously; the Task on IMapRenderer is there for the ones
+            // that may not always, and MapView unwraps them on the same terms.
+            if (frame.TileSize < StillTileSize && frame.World is not null && frame.Gpu is { } gpu &&
+                _still.Draw(canvas, frame, gpu, held => DrawAll(held, frame, tiles).GetAwaiter().GetResult()))
+            {
+                return;
+            }
+
+            await DrawAll(canvas, frame, tiles);
+        }
+
+        private async Task DrawAll(SKCanvas canvas, RenderFrame frame, IReadOnlyList<MapTile> tiles)
         {
             Collect(canvas, frame.TileSize, tiles);
 
