@@ -53,6 +53,12 @@ namespace NWorld.MapServices.Renderers
         private readonly WaterDepth _depth = new();
 
         /// <summary>
+        /// Where one ground gives way to another. Held per renderer for the reason the coast is
+        /// -- see <see cref="GroundEdge"/>.
+        /// </summary>
+        private readonly GroundEdge _ground = new();
+
+        /// <summary>
         /// Below this many pixels a tile, the whole tile pass is drawn once and then held --
         /// see <see cref="_still"/>.
         /// <para>
@@ -198,6 +204,13 @@ namespace NWorld.MapServices.Renderers
         private void Edges(SKCanvas canvas, RenderFrame frame, IReadOnlyList<MapTile> tiles)
         {
             _depth.Render(canvas, frame, tiles);
+
+            // Before the shore and after the grounds. The grounds have all been laid by now, so
+            // there is something on both sides of every boundary to work with; and the coast is
+            // drawn over the top of it, because where land meets water the shore is the boundary
+            // and this has nothing to say about it.
+            _ground.Render(canvas, frame, tiles);
+
             _coast.Render(canvas, frame, tiles);
         }
 
