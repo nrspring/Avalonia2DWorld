@@ -2742,6 +2742,10 @@ public partial class MainWindowViewModel : MapViewModelBase
 
             if (coordinate is { } current)
                 editor.Update(current, tile => tile.SetHoverType(MapRenderComponentConstants.Hover));
+
+            // The same question this map asks anywhere: what does the topmost thing on the tile
+            // have to say for itself.
+            HoverText = coordinate is { } over ? ComponentParams.HoverTextOf(map[over]) : null;
         });
 
         _hovered = coordinate;

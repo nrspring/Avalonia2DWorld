@@ -80,6 +80,17 @@ namespace NWorld.Map.ViewModels
         private IReadOnlyList<MapLabel>? _labels;
 
         /// <summary>
+        /// What to say beside the pointer, or null for nothing.
+        /// <para>
+        /// Held here because every map view shows it the same way, and set by whichever view
+        /// model owns the hover: what is worth saying about a tile is a question about the world,
+        /// and this base knows nothing about tiles.
+        /// </para>
+        /// </summary>
+        [ObservableProperty]
+        private string? _hoverText;
+
+        /// <summary>
         /// How the map is drawn. Replaced rather than edited -- <c>Options = Options with
         /// { TileSize = 8 }</c> -- which is both what makes it safe to read while a frame is
         /// in flight and what tells the control to repaint.

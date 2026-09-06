@@ -162,7 +162,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunct
         /// </summary>
         private static string? Label(IReadOnlyDictionary<string, string> parameters)
         {
-            if (ComponentParams.Value(parameters, ComponentParams.Elevation) is not { Length: > 0 } text)
+            if (ComponentParams.Older(parameters, ComponentParams.Elevation) is not { Length: > 0 } text)
                 return null;
 
             foreach (var character in text)

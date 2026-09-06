@@ -31,7 +31,7 @@ namespace NWorld.MapServices.Constants
         public const int BaseGround = 0;
 
         /// <summary>The tile under the pointer.</summary>
-        public const int Hover = 1;
+        public const int Hover = 9;
 
         /// <summary>
         /// What the tile is worth: ore, timber, oil. Part of the ground rather than something

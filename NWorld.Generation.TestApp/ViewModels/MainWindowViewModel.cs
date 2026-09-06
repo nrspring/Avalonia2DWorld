@@ -68,7 +68,15 @@ public partial class MainWindowViewModel : MapViewModelBase
             // batch buffers between frames and refuses to draw two at once, so it is not
             // shared.
             new StandardRenderer(),
-            new MapViewOptions { TileSize = 16, MiniMap = MiniMapLocation.LowerRight })
+            // The frame rate is on in this app and off in the one that makes the maps: this
+            // is where a render component is worked on a tile at a time, and what that costs
+            // shows up in the corner long before it is visible as a stutter.
+            new MapViewOptions
+            {
+                TileSize = 16,
+                MiniMap = MiniMapLocation.LowerRight,
+                ShowFrameRate = true,
+            })
     {
     }
 
@@ -489,6 +497,11 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         _hovered = coordinate;
         Tiles = map.Tiles;
+
+        // Whatever the topmost thing on the tile has to say for itself, or nothing. Read fresh
+        // off the tile every time rather than remembered: what is on a tile changes as things are
+        // built and pulled down, and the answer should change with it.
+        HoverText = coordinate is { } over ? ComponentParams.HoverTextOf(map[over]) : null;
     }
 
     /// <summary>
@@ -587,9 +600,16 @@ public partial class MainWindowViewModel : MapViewModelBase
             _ => MapRenderComponentConstants.Road,
         };
 
+        // Laid with its rotation and with a word for itself. The second is what the pointer
+        // reads back -- see ComponentParams.HoverTextOf -- and it is stored rather than worked
+        // out from the type, so that anything wanting to say something more particular later
+        // (which works, whose fort) writes a different string here and nothing else changes.
+        var parameters = ComponentParams.ForTurns(_quarters);
+        parameters[ComponentParams.Hover] = Describe(_building);
+
         map.Edit(editor => editor.Update(
             clicked,
-            edited => edited.SetEnhancementType(laying, ComponentParams.ForTurns(_quarters))));
+            edited => edited.SetEnhancementType(laying, parameters)));
 
         Tiles = map.Tiles;
 
@@ -759,6 +779,18 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         Report(clicked, $"turned. It lies {Lie()} where nothing joins it.");
     }
+
+    /// <summary>What to call one of these when the pointer is over it.</summary>
+    private static string Describe(Enhancement building) => building switch
+    {
+        Enhancement.Bridge => "Bridge",
+        Enhancement.City => "Town",
+        Enhancement.Fort => "Fort",
+        Enhancement.Factory => "Factory",
+        Enhancement.Shipyard => "Shipyard",
+        Enhancement.Works => "Works",
+        _ => "Road",
+    };
 
     /// <summary>What is built on a tile, or null where nothing is.</summary>
     private static Guid? Built(MapTile tile) =>

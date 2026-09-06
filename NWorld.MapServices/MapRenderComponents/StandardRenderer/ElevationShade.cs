@@ -148,7 +148,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// </para>
         /// </summary>
         private static int ElevationOf(IReadOnlyDictionary<string, string> parameters) =>
-            ComponentParams.Int(parameters, ComponentParams.Elevation) is { } elevation
+            ComponentParams.OlderInt(parameters, ComponentParams.Elevation) is { } elevation
                 ? Math.Clamp(elevation, SeaLevel, MountainsTo)
                 : Ground;
 

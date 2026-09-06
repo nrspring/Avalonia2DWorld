@@ -157,7 +157,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// </para>
         /// </summary>
         private static int Lone(IReadOnlyDictionary<string, string> parameters) =>
-            ComponentParams.Int(parameters, ComponentParams.Turns) is { } quarters
+            ComponentParams.OlderInt(parameters, ComponentParams.Turns) is { } quarters
             && (((quarters % 2) + 2) % 2) == 1
                 ? LoneUpright
                 : 0;

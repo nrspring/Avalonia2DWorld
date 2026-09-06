@@ -308,6 +308,7 @@
     <Panel>
 
         <map:MapView Tiles="{Binding Tiles}"
+                     HoverText="{Binding HoverText}"
                      Renderer="{Binding Renderer}"
                      Options="{Binding Options}"
                      HoverCommand="{Binding HoverCommand}"

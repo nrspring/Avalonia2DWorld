@@ -69,6 +69,24 @@ namespace NWorld.Map.Controls
             AvaloniaProperty.Register<MapView, IReadOnlyList<MapLabel>?>(nameof(Labels));
 
         /// <summary>
+        /// A line to show beside the pointer, or null for none.
+        /// <para>
+        /// The control draws whatever string it is handed and has no opinion about where it came
+        /// from -- which is the only arrangement that could work, since what is worth saying
+        /// about a tile is a fact about the world and this library has none. Deciding it is the
+        /// caller's; see <c>ComponentParams.HoverTextOf</c>, which is where this map answers it.
+        /// </para>
+        /// <para>
+        /// Beside the pointer rather than pinned to a corner, because it is about the thing under
+        /// the pointer and the eye is already there. It keeps clear of the cursor and folds back
+        /// inside the control at the edges, so it is readable in the corner of the map as well as
+        /// the middle of it.
+        /// </para>
+        /// </summary>
+        public static readonly StyledProperty<string?> HoverTextProperty =
+            AvaloniaProperty.Register<MapView, string?>(nameof(HoverText));
+
+        /// <summary>
         /// The renderer that draws the tiles. Nothing is drawn while this is null.
         /// <para>
         /// One renderer per control: <see cref="IMapRenderer"/> implementations reuse their
@@ -333,7 +351,7 @@ namespace NWorld.Map.Controls
         static MapView()
         {
             AffectsRender<MapView>(
-                TilesProperty, LabelsProperty, RendererProperty, OptionsProperty);
+                TilesProperty, LabelsProperty, HoverTextProperty, RendererProperty, OptionsProperty);
         }
 
         public MapView()
@@ -355,6 +373,13 @@ namespace NWorld.Map.Controls
         {
             get => GetValue(LabelsProperty);
             set => SetValue(LabelsProperty, value);
+        }
+
+        /// <inheritdoc cref="HoverTextProperty"/>
+        public string? HoverText
+        {
+            get => GetValue(HoverTextProperty);
+            set => SetValue(HoverTextProperty, value);
         }
 
         /// <inheritdoc cref="RendererProperty"/>
@@ -474,7 +499,9 @@ namespace NWorld.Map.Controls
                     Bounds.Height / options.TileSize),
                 _miniMapCache,
                 now,
-                options.ShowFrameRate ? _framesPerSecond : null));
+                options.ShowFrameRate ? _framesPerSecond : null,
+                HoverText,
+                _pointer));
 
             RequestNextFrame(options);
         }
@@ -532,6 +559,13 @@ namespace NWorld.Map.Controls
 
             SetHovered(ToTile(_pointer.Value));
             UpdateCursor();
+
+            // Only while there is something to show. A label beside the pointer has to keep up
+            // with it, and the tile under it does not change on most moves -- so without this the
+            // text would stay where the pointer entered the tile until it left again. Nothing is
+            // asked for when nothing is being said, which is nearly always.
+            if (HoverText is { Length: > 0 })
+                InvalidateVisual();
         }
 
         protected override void OnPointerExited(PointerEventArgs e)
@@ -1248,7 +1282,9 @@ namespace NWorld.Map.Controls
             Rect viewportTiles,
             MiniMapCache miniMapCache,
             double nowSeconds,
-            double? framesPerSecond) : ICustomDrawOperation
+            double? framesPerSecond,
+            string? hoverText,
+            Point? pointer) : ICustomDrawOperation
         {
             // Monospaced, so the box does not twitch as the digits change under it. Null when
             // the machine has no such face, which Skia reads as "use the default".
@@ -1310,6 +1346,11 @@ namespace NWorld.Map.Controls
                     // shows the whole map, so it gets the grid and not the screenful.
                     if (miniMap is { } inset)
                         DrawMiniMap(canvas, inset);
+
+                    // Over the map and the inset both: it is about whatever the pointer is
+                    // on, and the pointer is over all of it.
+                    if (hoverText is { Length: > 0 } && pointer is { } at)
+                        DrawHoverText(canvas, hoverText, at);
 
                     // Last of all: an instrument reading the frame it is drawn in should be
                     // on top of everything that frame cost.
@@ -1497,6 +1538,66 @@ namespace NWorld.Map.Controls
             /// top of a map of the map is unreadable anyway.
             /// </para>
             /// </summary>
+            /// <summary>
+            /// Writes a line beside the pointer, on a plate dark enough to read over any ground
+            /// the map can put under it.
+            /// <para>
+            /// Below and to the right by default, which is where a hand holding a mouse is not.
+            /// Where that would run off the control it flips to the other side instead of being
+            /// clamped: a label sliding along the edge would sit under the very cursor it belongs
+            /// to, and the corner is exactly where somebody is most likely to be pointing at
+            /// something they want named.
+            /// </para>
+            /// </summary>
+            private void DrawHoverText(SKCanvas canvas, string text, Point at)
+            {
+                using var pen = new SKPaint
+                {
+                    TextSize = 12.5f,
+                    IsAntialias = true,
+                    Color = new SKColor(0xEE, 0xF3, 0xFA),
+                };
+
+                var metrics = pen.FontMetrics;
+                var width = pen.MeasureText(text);
+
+                const float padX = 6f;
+                const float padY = 4f;
+                const float gap = 14f;
+
+                var high = metrics.Descent - metrics.Ascent;
+                var plate = SKRect.Create(
+                    (float)at.X + gap,
+                    (float)at.Y + gap,
+                    width + (padX * 2f),
+                    high + (padY * 2f));
+
+                // Flipped rather than slid, so the plate never ends up under the cursor.
+                if (plate.Right > Bounds.Width)
+                    plate.Offset(-(plate.Width + (gap * 2f)), 0f);
+
+                if (plate.Bottom > Bounds.Height)
+                    plate.Offset(0f, -(plate.Height + (gap * 2f)));
+
+                using var backing = new SKPaint
+                {
+                    Color = new SKColor(0x12, 0x1A, 0x26, 0xE8),
+                    IsAntialias = true,
+                };
+
+                canvas.DrawRoundRect(plate, 4f, 4f, backing);
+
+                backing.Color = new SKColor(0xFF, 0xFF, 0xFF, 0x2A);
+                backing.Style = SKPaintStyle.Stroke;
+                backing.StrokeWidth = 1f;
+
+                canvas.DrawRoundRect(
+                    new SKRect(plate.Left + 0.5f, plate.Top + 0.5f, plate.Right - 0.5f, plate.Bottom - 0.5f),
+                    4f, 4f, backing);
+
+                canvas.DrawText(text, plate.Left + padX, plate.Top + padY - metrics.Ascent, pen);
+            }
+
             private void DrawFrameRate(SKCanvas canvas, double rate)
             {
                 const float margin = 12f;
