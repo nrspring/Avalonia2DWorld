@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Windows.Input;
@@ -1328,7 +1328,11 @@ namespace NWorld.Map.Controls
                         // IMapRenderer is there for the ones that may not always. Unwrapped
                         // rather than left dangling so a failed draw surfaces here and not
                         // on the finalizer thread.
-                        renderer.RenderTiles(canvas, frame, visible).GetAwaiter().GetResult();
+                        // The context goes only to the map pass. The mini-map below draws
+                        // into a raster surface of its own, where an offscreen built on this
+                        // would be an image from the wrong device.
+                        renderer.RenderTiles(canvas, frame with { Gpu = lease.GrContext }, visible)
+                            .GetAwaiter().GetResult();
 
                         // After the tiles and inside the same translate: writing on a map is
                         // over the map and scrolls with it. Deliberately not in the mini-map

@@ -1,3 +1,5 @@
+﻿using SkiaSharp;
+
 namespace NWorld.Map.Models
 {
     /// <summary>
@@ -39,7 +41,25 @@ namespace NWorld.Map.Models
     /// a map that has otherwise been replaced.
     /// </para>
     /// </param>
-    public readonly record struct RenderFrame(int TileSize, float TimeSeconds, TileGrid? World = null)
+    /// <param name="Gpu">
+    /// The context the canvas is drawing through, for a component that wants an offscreen
+    /// surface of its own. Null where there is none -- a still render, a test, or a pass into
+    /// a raster surface -- and a component handed null must draw the ordinary way rather than
+    /// refusing.
+    /// <para>
+    /// Here because it is a fact about the frame and cannot be known any earlier: the context
+    /// belongs to the render thread and is handed over with the canvas, while everything else
+    /// on this record is settled on the UI thread a moment before. Whoever leases the canvas
+    /// fills it in.
+    /// </para>
+    /// <para>
+    /// A surface built from it lives only as long as the context does. Hold the context that
+    /// built one alongside it and compare before reuse: a lost device gives a new one, and
+    /// anything made from the old is so much rubbish.
+    /// </para>
+    /// </param>
+    public readonly record struct RenderFrame(
+        int TileSize, float TimeSeconds, TileGrid? World = null, GRContext? Gpu = null)
     {
         /// <summary>A frame with time stopped, for still renders and for tests.</summary>
         public static RenderFrame Still(int tileSize) => new(tileSize, 0f);

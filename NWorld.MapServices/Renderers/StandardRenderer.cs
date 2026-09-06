@@ -35,14 +35,20 @@ namespace NWorld.MapServices.Renderers
         private readonly List<Batch> _batches = [];
 
         /// <summary>
-        /// The line where the land meets the water. Held per renderer rather than statically,
-        /// because it keeps a path between frames -- see <see cref="Coastline"/>.
+        /// The line where the land meets the water, and the picture of it kept between frames.
+        /// Held per renderer rather than statically, because it holds both a path and a surface
+        /// that only one thread may be drawing at a time -- see <see cref="CoastlineCache"/>.
         /// </summary>
-        private readonly Coastline _coast = new();
+        private readonly CoastlineCache _coast = new();
 
         /// <summary>
         /// The slope where one depth of water meets another. Held per renderer for the reason
         /// the coast is -- see <see cref="WaterDepth"/>.
+        /// <para>
+        /// Not kept as a picture the way the coast is, and cannot be: it darkens the sea by
+        /// multiplying into it, so what it draws depends on the water underneath and it has to
+        /// be drawn against that water every frame. See <see cref="CoastlineCache"/>.
+        /// </para>
         /// </summary>
         private readonly WaterDepth _depth = new();
 
