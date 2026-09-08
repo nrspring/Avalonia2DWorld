@@ -17,6 +17,13 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 
         /// <summary>Three uprights side by side: a rank, which is order drawn as the same shape.</summary>
         Ranked,
+
+        /// <summary>
+        /// A row of pips, counted. For things that come in sizes rather than in kinds: a count
+        /// needs no second token beside it to be read, which is the same argument the ships were
+        /// drawn with when they were ships and their masts were the count.
+        /// </summary>
+        Pips,
     }
 
     /// <summary>
@@ -33,13 +40,21 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
     /// different silhouettes, which is the only difference on this list that still works after
     /// the colour has gone grey and the mark has closed up.
     /// </param>
+    /// <param name="Radius">
+    /// How big the token is, as a fraction of the tile. A cue in its own right, and the only one
+    /// on this list that still works when the token is four pixels across and every colour has
+    /// gone to mud -- which is why the three ships use it rather than sharing one size.
+    /// </param>
+    /// <param name="Count">How many pips, where <see cref="TokenMark.Pips"/> is the mark.</param>
     internal readonly record struct TokenStyle(
         SKColor Face,
         SKColor Rim,
         float RimShare,
         SKColor Ink,
         TokenMark Mark,
-        bool Rough);
+        bool Rough,
+        float Radius = 0.30f,
+        int Count = 0);
 
     /// <summary>
     /// A round marker standing on a tile: what a body of men comes to when it has to be
@@ -72,21 +87,17 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
     internal sealed class UnitToken(TokenStyle style, uint seed)
     {
         /// <summary>
-        /// The token's radius, as a fraction of the tile.
+        /// How small the token's own radius may get, in pixels, before the device inside it is
+        /// left off and the colour and rim carry it alone.
         /// <para>
-        /// Short of half, and it has to be. A token is a discrete thing standing on a tile rather
-        /// than a covering of it, so there is ground all round it -- run out to the edge, two of
-        /// them side by side would touch and read as one long shape, which is the same trap
-        /// <see cref="RenderingFunctions.RenderFort"/> keeps its margin against.
+        /// Measured against the radius rather than against the tile, which matters once tokens
+        /// come in sizes. A fixed tile threshold is really a statement about the largest token,
+        /// and it would let a small one keep drawing a device at a size where that device is
+        /// three pixels of noise -- so the smallest ship would be the one whose mark went to
+        /// pieces first, while the rule was written for the biggest.
         /// </para>
         /// </summary>
-        private const float Radius = 0.30f;
-
-        /// <summary>
-        /// Below this the device in the middle is a scribble and the token is left plain. The
-        /// colour and the rim are still doing their work, and they are enough.
-        /// </summary>
-        private const int MinMarkTileSize = 16;
+        private const float MinMarkRadius = 5f;
 
         /// <summary>How far the token is thrown onto the ground below it, as a fraction of the tile.</summary>
         private const float ShadowOffset = 0.028f;
@@ -120,7 +131,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
                 return;
 
             var centre = tileSize / 2f;
-            var radius = Radius * tileSize;
+            var radius = style.Radius * tileSize;
 
             using var paint = new SKPaint { IsAntialias = true, Style = SKPaintStyle.Fill };
 
@@ -149,7 +160,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
                 paint.Style = SKPaintStyle.Fill;
             }
 
-            if (tileSize >= MinMarkTileSize)
+            if (radius >= MinMarkRadius)
                 Mark(canvas, paint, centre, radius * (1f - style.RimShare), style);
         }
 
@@ -166,6 +177,13 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
             paint.Color = style.Ink;
             paint.Style = SKPaintStyle.Stroke;
             paint.StrokeCap = SKStrokeCap.Round;
+
+            if (style.Mark == TokenMark.Pips)
+            {
+                Pips(canvas, paint, centre, inner, style.Count);
+                paint.Style = SKPaintStyle.Fill;
+                return;
+            }
 
             if (style.Mark == TokenMark.Crossed)
             {
@@ -194,6 +212,37 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
             }
 
             paint.Style = SKPaintStyle.Fill;
+        }
+
+        /// <summary>
+        /// A row of pips across the middle of the token: one, two or three.
+        /// <para>
+        /// In a row rather than in a cluster, so that counting them is reading along a line and
+        /// not taking in a shape. Three in a triangle is a pattern the eye learns as "three" and
+        /// then confuses with any other triangle at small sizes; three in a row stays a count for
+        /// as long as the pips are separate at all.
+        /// </para>
+        /// <para>
+        /// They also grow as the count falls. One pip alone in a token would be a speck if it
+        /// were sized to sit beside two others, and a lone speck reads as a blemish rather than
+        /// as a number -- so a single pip is nearly half the width it has to itself.
+        /// </para>
+        /// </summary>
+        private static void Pips(SKCanvas canvas, SKPaint paint, float centre, float inner, int count)
+        {
+            var pips = Math.Clamp(count, 1, 3);
+
+            var size = inner * pips switch { 1 => 0.40f, 2 => 0.32f, _ => 0.25f };
+            var spread = inner * (pips == 2 ? 0.40f : 0.56f);
+
+            paint.Style = SKPaintStyle.Fill;
+
+            for (var i = 0; i < pips; i++)
+            {
+                var along = pips == 1 ? 0f : ((i / (float)(pips - 1)) * 2f) - 1f;
+
+                canvas.DrawCircle(centre + (along * spread), centre, size, paint);
+            }
         }
 
         /// <summary>One stave of the cross, laid at an angle through the middle of the token.</summary>
