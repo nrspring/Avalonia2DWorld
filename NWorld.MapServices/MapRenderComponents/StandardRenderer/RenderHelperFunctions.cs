@@ -44,6 +44,11 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
             //map holds a few dozen of them and caching five kinds against sixteen road shapes
             //would cost far more than drawing them. See RenderWorks.
             { MapRenderComponentConstants.Works, new(RenderWorks.Render) },
+            { MapRenderComponentConstants.Militia, new(RenderMilitia.Render, RenderMilitia.Prewarm, RenderMilitia.ClearCache) },
+            { MapRenderComponentConstants.Soldiers, new(RenderSoldiers.Render, RenderSoldiers.Prewarm, RenderSoldiers.ClearCache) },
+            { MapRenderComponentConstants.SmallShip, new(RenderSmallShip.Render, RenderSmallShip.Prewarm, RenderSmallShip.ClearCache) },
+            { MapRenderComponentConstants.MediumShip, new(RenderMediumShip.Render, RenderMediumShip.Prewarm, RenderMediumShip.ClearCache) },
+            { MapRenderComponentConstants.LargeShip, new(RenderLargeShip.Render, RenderLargeShip.Prewarm, RenderLargeShip.ClearCache) },
             { MapRenderComponentConstants.Hover, new(RenderHover.Render, RenderHover.Prewarm, RenderHover.ClearCache) },
             { MapRenderComponentConstants.Selected, new(RenderSelected.Render, RenderSelected.Prewarm, RenderSelected.ClearCache) },
             { MapRenderComponentConstants.Range, new(RenderRange.Render) },

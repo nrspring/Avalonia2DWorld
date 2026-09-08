@@ -49,6 +49,22 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         //RenderWorks.
         public static Guid Works { get; } = new Guid("AD170000-AD17-AD17-AD17-AD17AD17AD17");
 
+        //Unit types: what is standing on a tile, as opposed to what is built there.
+        //B111 for the bill, the hedging hook a levied man brought to war with him -- the rest
+        //of these are spelled in hex the same way.
+        public static Guid Militia { get; } = new Guid("B1110000-B111-B111-B111-B111B111B111");
+
+        //F11E for the file, which is the thing soldiers stand in and militia do not -- see
+        //RenderSoldiers, where that is the whole of the difference between the two.
+        public static Guid Soldiers { get; } = new Guid("F11E0000-F11E-F11E-F11E-F11EF11EF11E");
+
+        //Ships, named for the vessel rather than for the size: a boat, a cog and a carrack.
+        //Sized apart in the drawing by how many masts each carries, which is a count and so
+        //needs no second ship beside it to be read -- see Vessel.
+        public static Guid SmallShip { get; } = new Guid("B0A70000-B0A7-B0A7-B0A7-B0A7B0A7B0A7");
+        public static Guid MediumShip { get; } = new Guid("C0600000-C060-C060-C060-C060C060C060");
+        public static Guid LargeShip { get; } = new Guid("CA44AC00-CA44-CA44-CA44-CA44CA44CA44");
+
         //Overlay types
         public static Guid ElevationLabel { get; } = new Guid("99999999-9999-9999-9999-999999999999");
     }

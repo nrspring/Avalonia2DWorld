@@ -143,6 +143,34 @@ public partial class MainWindowViewModel : MapViewModelBase
         Works,
 
         /// <summary>
+        /// A body of militia standing on the tile.
+        /// <para>
+        /// Not an enhancement either -- it goes on the unit layer rather than the one everything
+        /// above it goes on -- and it is in this list for the reason <see cref="Label"/> already
+        /// is: to whoever is using this window they are all the same thing, and splitting the
+        /// panel to reflect which layer a thing is stored on would be the storage arranging the
+        /// panel.
+        /// </para>
+        /// <para>
+        /// What being on its own layer does change is what a click <em>lifts</em>, and that is
+        /// dealt with where the lifting is -- see <see cref="Click"/>.
+        /// </para>
+        /// </summary>
+        Militia,
+
+        /// <summary>Four soldiers in two ranks, which is the militia's opposite in every way.</summary>
+        Soldiers,
+
+        /// <summary>A boat. The first of the three that want water rather than ground.</summary>
+        SmallShip,
+
+        /// <summary>A cog.</summary>
+        MediumShip,
+
+        /// <summary>A carrack.</summary>
+        LargeShip,
+
+        /// <summary>
         /// Writing on the map, placed where it was clicked rather than on the tile clicked.
         /// <para>
         /// The one tool here that is not an enhancement on a tile, and it sits in the same
@@ -255,6 +283,64 @@ public partial class MainWindowViewModel : MapViewModelBase
         }
     }
 
+    /// <summary>Whether clicks post militia and stand them down.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingMilitia
+    {
+        get => _building == Enhancement.Militia;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Militia);
+        }
+    }
+
+    /// <summary>Whether clicks post soldiers and stand them down.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingSoldiers
+    {
+        get => _building == Enhancement.Soldiers;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Soldiers);
+        }
+    }
+
+    /// <summary>Whether clicks moor a boat and cast it off.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingSmallShip
+    {
+        get => _building == Enhancement.SmallShip;
+        set
+        {
+            if (value)
+                Arm(Enhancement.SmallShip);
+        }
+    }
+
+    /// <inheritdoc cref="IsBuildingSmallShip"/>
+    public bool IsBuildingMediumShip
+    {
+        get => _building == Enhancement.MediumShip;
+        set
+        {
+            if (value)
+                Arm(Enhancement.MediumShip);
+        }
+    }
+
+    /// <inheritdoc cref="IsBuildingSmallShip"/>
+    public bool IsBuildingLargeShip
+    {
+        get => _building == Enhancement.LargeShip;
+        set
+        {
+            if (value)
+                Arm(Enhancement.LargeShip);
+        }
+    }
+
     /// <summary>Whether clicks write on the map and rub the writing out.</summary>
     /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
     public bool IsBuildingLabel
@@ -297,6 +383,11 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(IsBuildingFactory));
         OnPropertyChanged(nameof(IsBuildingShipyard));
         OnPropertyChanged(nameof(IsBuildingWorks));
+        OnPropertyChanged(nameof(IsBuildingMilitia));
+        OnPropertyChanged(nameof(IsBuildingSoldiers));
+        OnPropertyChanged(nameof(IsBuildingSmallShip));
+        OnPropertyChanged(nameof(IsBuildingMediumShip));
+        OnPropertyChanged(nameof(IsBuildingLargeShip));
         OnPropertyChanged(nameof(IsBuildingLabel));
         OnPropertyChanged(nameof(BuildSummary));
     }
@@ -466,6 +557,11 @@ public partial class MainWindowViewModel : MapViewModelBase
                 Enhancement.Factory => "Click dry land to build. The yard opens an apron wherever a road reaches it.",
                 Enhancement.Shipyard => "Click dry land beside water. The slips run down whichever sides the water is on.",
                 Enhancement.Works => "Click anywhere. What gets built is whatever the ground it lands on calls for.",
+                Enhancement.Militia => "Click dry land to post militia, or a tile already held to stand them down.",
+                Enhancement.Soldiers => "Click dry land to post soldiers, or a tile already held to stand them down.",
+                Enhancement.SmallShip => "Click water to moor a boat, or a tile with one to cast it off.",
+                Enhancement.MediumShip => "Click water to moor a cog, or a tile with one to cast it off.",
+                Enhancement.LargeShip => "Click water to moor a carrack, or a tile with one to cast it off.",
                 Enhancement.Label => _writing.Picked is null
                     ? "Click open ground to write. Click writing to edit it, or drag it somewhere else."
                     : $"Editing \"{_writing.Picked.Text}\". Drag it to move it, or type to change it.",
@@ -525,6 +621,19 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         if (map[clicked] is not { } tile)
             return;
+
+        // A unit tool works the unit layer and nothing else, which is where the old rule below
+        // had to give a little. With one layer, "lifting is always allowed whichever tool is
+        // held" cost nothing; with two it would mean militia could never be posted onto a tile
+        // that already had something built on it, because the click would pull the building down
+        // instead -- so a fort could never be garrisoned, which is most of the point of having
+        // both. Each tool now lifts its own layer, and the spirit of the rule survives where it
+        // mattered: whatever you just put down, the tool still in your hand takes back.
+        if (Unit(_building) is { } posting)
+        {
+            Post(map, tile, clicked, posting);
+            return;
+        }
 
         // Lifting is always allowed, whatever is underneath and whichever tool is held: a clear
         // tile is a state any ground can be in, and being made to switch tools to undo your own
@@ -757,7 +866,17 @@ public partial class MainWindowViewModel : MapViewModelBase
     [RelayCommand]
     private void RightClick(TileCoordinate? coordinate)
     {
+        // Units are excluded along with the label tool, and for a plainer reason than its:
+        // they have no rotation to turn. Men stood on a tile face the way they were drawn facing
+        // and a ship lies the way she was drawn lying, so a right-click here would silently
+        // advance a number nothing reads -- a control that does nothing while looking like it
+        // did something.
+        //
+        // A ship is the one thing on this map that genuinely wants turning, and cannot be turned
+        // yet for a reason that is not about this window at all: one sprite is held per zoom
+        // level, and a heading would mean one per zoom per heading. See Vessel.
         if (_building == Enhancement.None || _building == Enhancement.Label
+            || Unit(_building) is not null
             || _map is not { } map || coordinate is not { } clicked)
         {
             return;
@@ -780,10 +899,85 @@ public partial class MainWindowViewModel : MapViewModelBase
         Report(clicked, $"turned. It lies {Lie()} where nothing joins it.");
     }
 
+    /// <summary>
+    /// Posts militia on a tile, or stands down the ones already there.
+    /// <para>
+    /// Its own method rather than another arm of <see cref="Click"/>, because almost nothing in
+    /// there applies: there is no rotation to carry, no neighbour to take a shape from, and the
+    /// one rule about where it may go is the plainest in the app. Men need ground under them.
+    /// </para>
+    /// </summary>
+    private void Post(TileMap map, MapTile tile, TileCoordinate clicked, Guid posting)
+    {
+        // Lifted by what is actually there rather than by what is held, so that casting off a
+        // boat says the water is clear and standing men down says they are stood down, even
+        // where the tool in hand is the other one.
+        if (Standing(tile) is { } there)
+        {
+            map.Edit(editor => editor.Update(
+                clicked,
+                edited => edited.MapRenderComponents.Remove(RenderComponentLayers.Unit)));
+
+            Tiles = map.Tiles;
+
+            Report(clicked, Floats(there) ? "is clear water again." : "is stood down.");
+            return;
+        }
+
+        // The one rule about where a unit goes, and it runs both ways: men need ground and ships
+        // need water. Written as the one comparison rather than as two branches, because they are
+        // not two rules -- they are the same rule read from either end.
+        var wet = Shoreline.IsWater(tile);
+
+        if (Floats(posting) != wet)
+        {
+            Report(clicked, wet
+                ? "is water. Men need ground under them."
+                : "is dry. A ship needs water under her.");
+
+            return;
+        }
+
+        map.Edit(editor => editor.Update(
+            clicked,
+            edited => edited.SetUnitType(
+                posting,
+                ComponentParams.Of(ComponentParams.Hover, Describe(_building)))));
+
+        Tiles = map.Tiles;
+
+        Report(clicked, Floats(posting) ? "has a ship at it." : "is held.");
+    }
+
+    /// <summary>
+    /// Which unit a tool posts, or null for the tools that build rather than post. Also what
+    /// answers whether a tool is a unit tool at all, which is asked in more than one place.
+    /// </summary>
+    private static Guid? Unit(Enhancement building) => building switch
+    {
+        Enhancement.Militia => MapRenderComponentConstants.Militia,
+        Enhancement.Soldiers => MapRenderComponentConstants.Soldiers,
+        Enhancement.SmallShip => MapRenderComponentConstants.SmallShip,
+        Enhancement.MediumShip => MapRenderComponentConstants.MediumShip,
+        Enhancement.LargeShip => MapRenderComponentConstants.LargeShip,
+        _ => null,
+    };
+
+    /// <summary>Whether a unit wants water under it rather than ground.</summary>
+    private static bool Floats(Guid unit) =>
+        unit == MapRenderComponentConstants.SmallShip
+        || unit == MapRenderComponentConstants.MediumShip
+        || unit == MapRenderComponentConstants.LargeShip;
+
     /// <summary>What to call one of these when the pointer is over it.</summary>
     private static string Describe(Enhancement building) => building switch
     {
         Enhancement.Bridge => "Bridge",
+        Enhancement.Militia => "Militia",
+        Enhancement.Soldiers => "Soldiers",
+        Enhancement.SmallShip => "Boat",
+        Enhancement.MediumShip => "Cog",
+        Enhancement.LargeShip => "Carrack",
         Enhancement.City => "Town",
         Enhancement.Fort => "Fort",
         Enhancement.Factory => "Factory",
@@ -791,6 +985,17 @@ public partial class MainWindowViewModel : MapViewModelBase
         Enhancement.Works => "Works",
         _ => "Road",
     };
+
+    /// <summary>What is standing on a tile, or null where nothing is.</summary>
+    private static Guid? Standing(MapTile tile) =>
+        tile.MapRenderComponents.TryGetValue(RenderComponentLayers.Unit, out var unit)
+        && (unit.ComponentType == MapRenderComponentConstants.Militia
+            || unit.ComponentType == MapRenderComponentConstants.Soldiers
+            || unit.ComponentType == MapRenderComponentConstants.SmallShip
+            || unit.ComponentType == MapRenderComponentConstants.MediumShip
+            || unit.ComponentType == MapRenderComponentConstants.LargeShip)
+            ? unit.ComponentType
+            : null;
 
     /// <summary>What is built on a tile, or null where nothing is.</summary>
     private static Guid? Built(MapTile tile) =>
