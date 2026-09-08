@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using NWorld.Map.Models;
 using SkiaSharp;
 
@@ -85,8 +85,15 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// is held is not what would be drawn now. False where nothing could be held -- too large,
         /// or the device would not give a surface -- and then the caller must draw as it always
         /// did, having had nothing drawn for it.
+        /// <para>
+        /// <paramref name="with"/> is how the picture goes back on, for a caller that wants
+        /// something other than laying it over what is there: the water's drop-off holds a mask
+        /// and blits it through <see cref="SKBlendMode.DstIn"/>, so what is held is not a picture
+        /// of the map at all but the shape another draw is cut to.
+        /// </para>
         /// </summary>
-        public bool Draw(SKCanvas canvas, RenderFrame frame, GRContext gpu, Action<SKCanvas> paint)
+        public bool Draw(
+            SKCanvas canvas, RenderFrame frame, GRContext gpu, Action<SKCanvas> paint, SKPaint? with = null)
         {
             var clip = canvas.DeviceClipBounds;
             var matrix = canvas.TotalMatrix;
@@ -105,7 +112,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
             try
             {
                 canvas.ResetMatrix();
-                _surface!.Draw(canvas, _clip.Left, _clip.Top, null);
+                _surface!.Draw(canvas, _clip.Left, _clip.Top, with);
             }
             finally
             {
