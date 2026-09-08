@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using NWorld.Map.Models;
 using SkiaSharp;
 
@@ -16,8 +16,9 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
     /// because the water animating on top forces a repaint of everything beneath.
     /// </para>
     /// <para>
-    /// Worth holding rather than merely trimming: the coast is three blurred strokes, and a
-    /// blurred stroke is paid for per pixel along every shoreline on screen. Measured on a 600x400
+    /// Worth holding rather than merely trimming: the coast is a handful of strokes, most of
+    /// them blurred, laid along two passes over the shore rather than one -- and a blurred stroke
+    /// is paid for per pixel along every shoreline on screen. Measured on a 600x400
     /// world at sixteen pixels a tile it came to about six milliseconds of a twenty-eight
     /// millisecond frame. Held as a picture it is one blit, which measured out at half again as
     /// many frames a second at that zoom.

@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using NWorld.Map.Interfaces;
 using NWorld.Map.Models;
 using NWorld.MapServices.Renderers;
 using SkiaSharp;
+using static NWorld.MapServices.MapRenderComponents.StandardRenderer.RenderNoise;
 
 namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 {
@@ -100,7 +101,65 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// the tile. The bigger it is the rounder the coast -- and the wider the strip, which
         /// follows it up rather than having to be raised to match.
         /// </summary>
-        private const float CornerFraction = 0.30f;
+        private const float CornerFraction = 0.20f;
+
+        /// <summary>
+        /// How far the coast is pushed off the grid it was cut on, as a fraction of a tile:
+        /// each corner of the tile grid is shifted a little way in some direction of its own.
+        /// <para>
+        /// Rounding alone gives every tile the same tidy scallop, which is a different way of
+        /// drawing the grid rather than a way of hiding it -- a coast made only of quarter
+        /// circles at a fixed radius reads as machined, and at a glance the eye finds the
+        /// period it repeats on. Moving the corners first means the curves are struck between
+        /// points that are no longer evenly spaced, so no two turns come out alike.
+        /// </para>
+        /// <para>
+        /// The ceiling on it is <see cref="Width"/>: everything the sand has to hide is measured
+        /// from where the tile edges actually are, so a push the sand cannot cover is a push
+        /// that shows those edges through it. Which is why this is folded into that sum rather
+        /// than tuned against it by eye.
+        /// </para>
+        /// <para>
+        /// Small, and deliberately so, because it is the dearest thing on this class by some
+        /// way: it is paid for twice over in solid sand, and solid sand is the one measurement
+        /// anybody looking at the map actually reads as the width of the beach. A push worth
+        /// seeing here costs a beach nobody wanted. Nearly all of the irregularity is bought
+        /// instead through <see cref="FringeWanderFraction"/>, which has no such bill to pay --
+        /// this is left with just enough to take the ruled look off a straight run.
+        /// </para>
+        /// </summary>
+        private const float WanderFraction = 0.02f;
+
+        /// <summary>
+        /// How far the <em>fringe</em> is pushed about, as a fraction of a tile, and it is a
+        /// good deal further than the coast itself.
+        /// <para>
+        /// It can afford to be, because it is not load-bearing. The coast proper has to have the
+        /// sand covering the corners of the tile grid wherever it goes, so every pixel it
+        /// wanders is paid for twice over in width. The fringe covers nothing and promises
+        /// nothing: whatever it adds is added outside a beach that is already whole.
+        /// </para>
+        /// <para>
+        /// Which is what makes the beach an irregular one. A single stroke is a constant width
+        /// by construction -- wander it as much as you like and it is still a ribbon, merely a
+        /// wobbly one -- so the sand is laid down <b>twice</b>, once along each line, and what
+        /// is seen is the union of the two. Where they diverge the beach is broad; where they
+        /// nearly coincide it pinches to the width of the one that must always be there. That
+        /// is a shore that is wide in the bays and thin on the headlands, and it costs the
+        /// guarantee nothing.
+        /// </para>
+        /// <para>
+        /// Hashed on its own seed rather than on a multiple of the coast's, or the two would
+        /// bulge in the same places and stay parallel, which is the ribbon again.
+        /// </para>
+        /// </summary>
+        private const float FringeWanderFraction = 0.10f;
+
+        /// <summary>The coast's own wander, and the skirt's, which must not agree.</summary>
+        private const uint WanderSeed = 0x6D2B79F5u;
+
+        /// <inheritdoc cref="WanderSeed"/>
+        private const uint FringeSeed = 0x1B873593u;
 
         /// <summary>
         /// How much ground a rounded corner leaves outside the curve, as a fraction of the
@@ -115,26 +174,51 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 
         /// <summary>
         /// Width of the solid middle of the sand, as a fraction of the tile -- or the width the
-        /// corners need, whichever is the greater. See <see cref="Width"/>.
+        /// corners and the wander need, whichever is the greater. See <see cref="Width"/>.
         /// </summary>
-        private const float ShoreFraction = 0.215f;
+        private const float ShoreFraction = 0.20f;
+
+        /// <summary>
+        /// Width of the second pass of sand, the one laid along the fringe, as a fraction of a
+        /// tile. Well under the first: it is there to widen the beach unevenly, not to be a
+        /// beach of its own, and a fringe near the width of the coast would simply double the
+        /// ribbon.
+        /// <para>
+        /// This and <see cref="FringeWanderFraction"/> together are what the beach can swell to
+        /// -- half of this plus the whole of that, outside the coast's own half width. They want
+        /// reading as one number and not two, because it is their sum that is either a shore
+        /// that varies or a shore that is fat.
+        /// </para>
+        /// </summary>
+        private const float FringeShoreFraction = 0.12f;
 
         /// <summary>
         /// Width of the skirt of sand outside that, which is blurred so the beach fades into
-        /// the water instead of ending at a stroke width. Wider than the solid part, and far
-        /// fainter.
+        /// the water instead of ending at a stroke width.
+        /// <para>
+        /// Kept close to the solid part rather than several times it. A skirt much wider than
+        /// the sand it belongs to stops reading as the far end of a beach and starts reading as
+        /// a halo around a line -- and a halo is most of what makes a bright band look lit from
+        /// within rather than lain on the ground. It wants to be the last of the sand running
+        /// out, which is a short distance, and not a glow.
+        /// </para>
         /// </summary>
-        private const float SandSkirtFraction = 0.62f;
+        private const float SandSkirtFraction = 0.20f;
 
-        /// <summary>How far the skirt of sand is blurred, as a fraction of the tile.</summary>
-        private const float SandBlurFraction = 0.12f;
+        /// <summary>
+        /// How far the skirt of sand is blurred, as a fraction of the tile. Short, for the same
+        /// reason the skirt is narrow: this is meant to be the sand thinning out over the last
+        /// of its width, and a blur run much past that turns the strip into a lit edge with a
+        /// soft surround, which is the look being got rid of.
+        /// </summary>
+        private const float SandBlurFraction = 0.09f;
 
         /// <summary>
         /// How wide the shallows are drawn before blurring, as a fraction of the tile. Reaching
         /// half of this either side of the coast, of which the landward half is thrown away by
         /// the clip -- a stroke has two sides and only one of them is the sea.
         /// </summary>
-        private const float ShallowsFraction = 1.15f;
+        private const float ShallowsFraction = 0.95f;
 
         /// <summary>
         /// How far the shallows are blurred. Most of a tile, because what is being drawn is the
@@ -143,21 +227,81 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// </summary>
         private const float ShallowsBlurFraction = 0.26f;
 
-        /// <summary>Width of the line of surf along the waterline itself.</summary>
-        private const float SurfFraction = 0.075f;
+        /// <summary>
+        /// Width of the line of surf along the waterline itself. Thin, and drawn faint -- see
+        /// <see cref="Surf"/> -- because a bright line blurred along a coast is a glow, whatever
+        /// it is called.
+        /// </summary>
+        private const float SurfFraction = 0.06f;
 
         /// <inheritdoc cref="SurfFraction"/>
         private const float SurfBlurFraction = 0.035f;
 
         /// <summary>
-        /// Wet sand seen from above: darker and greyer than dry sand, which is what a beach at
-        /// the waterline actually is. Nearly opaque, because this is the part that has to hide
-        /// the corners of the tile grid and a corner half showing is a corner showing.
+        /// Wet sand seen from above: warm and fairly dark, which is what a beach at the
+        /// waterline actually is -- sand with water still in it is a shade or two down from the
+        /// dry sand behind it, not a shade or two up.
+        /// <para>
+        /// Opaque, and that does two jobs. It is the part that has to hide the corners of the
+        /// tile grid, and a corner half showing is a corner showing. It is also the difference
+        /// between a beach and a band of light: paint let through at four fifths picks up the
+        /// water and the grass either side of it and comes back as a pale average of both, which
+        /// has no colour of its own to read as sand -- so what is seen is a bright strip rather
+        /// than a material.
+        /// </para>
         /// </summary>
-        private static readonly SKColor Sand = new(0xC4, 0xB4, 0x93, 0xD4);
+        private static readonly SKColor Sand = new(0xC2, 0xA9, 0x7E, 0xFF);
 
+        /// <summary>
+        /// The sand running out, at the seaward and landward ends of the strip alike. The same
+        /// sand a little darker rather than a little paler, so that the beach fades by thinning
+        /// out into what is around it instead of brightening away from it.
+        /// </summary>
         /// <inheritdoc cref="SandSkirtFraction"/>
-        private static readonly SKColor SandSkirt = new(0xCA, 0xBC, 0x9E, 0x50);
+        private static readonly SKColor SandSkirt = new(0xB3, 0x9A, 0x72, 0x6E);
+
+        /// <summary>
+        /// Sand that has dried out, up at the back of the beach, and the odd shell or dark
+        /// pebble lying in it. What <see cref="Grains"/> mottles <see cref="Sand"/> towards.
+        /// </summary>
+        private static readonly SKColor SandDry = new(0xD5, 0xC0, 0x94);
+
+        /// <inheritdoc cref="SandDry"/>
+        private static readonly SKColor Shell = new(0xE9, 0xDF, 0xC6);
+
+        /// <inheritdoc cref="SandDry"/>
+        private static readonly SKColor Pebble = new(0x86, 0x71, 0x54);
+
+        /// <summary>The speckle's own noise, unrelated to the wander's.</summary>
+        private const uint GrainSeed = 0x9C41E70Du;
+
+        /// <summary>
+        /// The speckle texture's size in pixels, and how many tiles of map it is stretched
+        /// across. Between them they decide the one thing that matters here, which is how near
+        /// life size the texture lands at the zoom being drawn.
+        /// <para>
+        /// Ten tiles across five hundred and twelve pixels puts it at life size at about fifty
+        /// pixels a tile, which is the near end of the zoom ladder -- and the near end is the
+        /// right place to put it, because grain is only worth drawing where the beach is wide
+        /// enough to see grain in. Zoomed further out the texture minifies and the speckle
+        /// averages down towards an even sand, which is what sand looks like from that far up
+        /// anyway.
+        /// </para>
+        /// <para>
+        /// Landing near life size is also what lets the grain be per pixel, as
+        /// <see cref="RenderingFunctions.RenderDesert"/> draws it. Stretched hard the other way
+        /// it could not be: magnified, single pixels of noise come back as a mosaic of visible
+        /// squares rather than as grains, which reads as a bad texture and not as a beach.
+        /// </para>
+        /// <para>
+        /// Ten tiles is also long enough that the repeat does not announce itself. It would on a
+        /// field; on a ribbon a third of a tile wide the eye never sees two copies at once.
+        /// </para>
+        /// </summary>
+        private const int GrainEdge = 512;
+
+        /// <inheritdoc cref="GrainEdge"/>
+        private const int GrainTiles = 10;
 
         /// <summary>
         /// The sea where the bottom is close under it. Green rather than blue, and that is the
@@ -165,15 +309,23 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// blue last, so a metre of it over pale sand comes back green while ten metres of it
         /// comes back blue. It is laid over the water the renderer already drew, so it only has
         /// to carry the sea that far and not paint it from nothing.
+        /// <para>
+        /// Muted green rather than a clean one, which is the rest of that same physics and was
+        /// the single biggest thing making this coast glow. What is being seen through the water
+        /// is <em>sand</em>, so the colour coming back is a green with the sand still in it. A
+        /// saturated turquoise is the colour of nothing on a shelf: it has no bottom in it, and
+        /// laid down a tile wide and heavily blurred it reads as light coming out of the coast
+        /// rather than as ground showing through the sea.
+        /// </para>
         /// </summary>
-        private static readonly SKColor Shallows = new(0x6E, 0xCF, 0xC0, 0x7A);
+        private static readonly SKColor Shallows = new(0x8E, 0xB4, 0xA0, 0x66);
 
         /// <summary>
         /// The surf. Not white: broken water over sand is white with the sand in it, and a
         /// clean white line reads as something drawn on rather than something floating in the
         /// water.
         /// </summary>
-        private static readonly SKColor Surf = new(0xE8, 0xF4, 0xEE, 0x5A);
+        private static readonly SKColor Surf = new(0xDE, 0xD8, 0xC4, 0x36);
 
         /// <summary>
         /// The coast for this frame. Kept and rewound rather than made afresh, since it is
@@ -181,6 +333,12 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// sixty times a second.
         /// </summary>
         private readonly SKPath _path = new();
+
+        /// <summary>
+        /// The same coast wandered further, which the skirt of sand is drawn along instead of
+        /// the coast proper. See <see cref="FringeWanderFraction"/>.
+        /// </summary>
+        private readonly SKPath _fringe = new();
 
         /// <summary>
         /// The water near the shore, as one rectangle per tile: what the shallows are clipped
@@ -216,6 +374,41 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         private readonly Dictionary<int, SKMaskFilter> _surfBlur = [];
 
         /// <summary>
+        /// The speckled sand, one shader per zoom level -- all of them views of the one texture
+        /// below at different scales, so this is a handful of bytes each and not a copy.
+        /// </summary>
+        private readonly Dictionary<int, SKShader> _sandShader = [];
+
+        /// <summary>
+        /// The speckle itself, built once and kept: a megabyte for the life of the process,
+        /// against building it per zoom level or per frame.
+        /// </summary>
+        private static SKImage? _grains;
+
+        /// <summary>
+        /// Which path this pass is laying down, how hard it is wandering, on what hash, and
+        /// whether it is the pass that gathers the sea.
+        /// <para>
+        /// Fields rather than arguments because the walk threads them through four methods that
+        /// carry nine parameters between them already, and because they are only ever set and
+        /// read inside a single call to <see cref="Render"/> -- which is safe for exactly the
+        /// reason this is an instance and not a static: one renderer, one thread.
+        /// </para>
+        /// </summary>
+        private SKPath _target;
+
+        /// <inheritdoc cref="_target"/>
+        private float _wander;
+
+        /// <inheritdoc cref="_target"/>
+        private uint _seed;
+
+        /// <inheritdoc cref="_target"/>
+        private bool _gatherSea;
+
+        public Coastline() => _target = _path;
+
+        /// <summary>
         /// Draws every coast the canvas can show.
         /// <para>
         /// Nothing here moves with <see cref="RenderFrame.TimeSeconds"/>: the shore stays where
@@ -237,13 +430,88 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
                 return;
 
             _path.Rewind();
+            _fringe.Rewind();
             _sea.Rewind();
 
             var (minX, minY, maxX, maxY) = VisibleTiles.For(canvas, tileSize);
 
-            // Walked as a span where the list allows it, for the reason every other pass over
-            // the tiles does the same: on a large map most of them are off screen, and fetching
-            // each one through the interface only to drop it is milliseconds a frame.
+            var soft = tileSize >= MinShallowsTileSize;
+
+            _target = _path;
+            _wander = WanderFraction;
+            _seed = WanderSeed;
+            _gatherSea = soft;
+
+            Walk(tiles, world, minX, minY, maxX, maxY, tileSize);
+
+            if (_path.IsEmpty)
+                return;
+
+            // The skirt's own line, walked a second time on its own hash. A second walk rather
+            // than a second set of points threaded through the first, because the walk is a few
+            // hundred tiles of a screenful that may be tens of thousands -- cheaper to do twice
+            // than to complicate, and only done at all where there is a skirt to draw.
+            if (soft)
+            {
+                _target = _fringe;
+                _wander = FringeWanderFraction;
+                _seed = FringeSeed;
+                _gatherSea = false;
+
+                Walk(tiles, world, minX, minY, maxX, maxY, tileSize);
+            }
+
+            // Deepest first, and each one softer at its edges than the one before is hard at
+            // its middle: the sea shoaling, then the sand fading out of it, then the sand
+            // itself, then the surf along the line where the two meet. Nothing is outlined and
+            // nothing ends at a stroke width except the one stroke that has to.
+            Shoal(canvas, tileSize);
+
+            // Not below the size the softer half of the coast is drawn at. The speckle is
+            // grains of sand, and a beach two pixels across has no room for any -- so this is
+            // also what keeps a map only ever seen at that size from building the texture at
+            // all.
+            var speckle = soft ? Speckle(tileSize) : null;
+
+            if (soft)
+            {
+                Stroke(
+                    canvas, _fringe, SandSkirt, SandSkirtFraction * tileSize,
+                    Blur(_sandBlur, SandBlurFraction, tileSize));
+
+                // The uneven half of the beach. Laid before the guaranteed one and not after,
+                // so that wherever the two disagree it is the stroke that has to cover the tile
+                // corners which ends up on top.
+                Stroke(
+                    canvas, _fringe, Sand, Math.Max(FringeShoreFraction * tileSize, 1f),
+                    speckle: speckle);
+            }
+
+            Stroke(canvas, _path, Sand, Math.Max(Width * tileSize, 1f), speckle: speckle);
+
+            if (soft)
+            {
+                // Along the fringe rather than the coast, because after the pass above the
+                // waterline is mostly out at the fringe -- and being the faintest thing here it
+                // is no great matter where it is not.
+                Stroke(
+                    canvas, _fringe, Surf, Math.Max(SurfFraction * tileSize, 1f),
+                    Blur(_surfBlur, SurfBlurFraction, tileSize));
+            }
+        }
+
+        /// <summary>
+        /// One pass over the screenful, laying the coast into <see cref="_target"/>.
+        /// <para>
+        /// Walked as a span where the list allows it, for the reason every other pass over the
+        /// tiles does the same: on a large map most of them are off screen, and fetching each
+        /// one through the interface only to drop it is milliseconds a frame.
+        /// </para>
+        /// </summary>
+        private void Walk(
+            IReadOnlyList<MapTile> tiles, TileGrid world,
+            int minX, int minY, int maxX, int maxY, int tileSize)
+        {
             switch (tiles)
             {
                 case ITileRows grid:
@@ -264,23 +532,6 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
                         Collect(tile, world, minX, minY, maxX, maxY, tileSize);
                     break;
             }
-
-            if (_path.IsEmpty)
-                return;
-
-            // Deepest first, and each one softer at its edges than the one before is hard at
-            // its middle: the sea shoaling, then the sand fading out of it, then the sand
-            // itself, then the surf along the line where the two meet. Nothing is outlined and
-            // nothing ends at a stroke width except the one stroke that has to.
-            Shoal(canvas, tileSize);
-
-            if (tileSize >= MinShallowsTileSize)
-                Stroke(canvas, SandSkirt, SandSkirtFraction * tileSize, Blur(_sandBlur, SandBlurFraction, tileSize));
-
-            Stroke(canvas, Sand, Math.Max(Width * tileSize, 1f));
-
-            if (tileSize >= MinShallowsTileSize)
-                Stroke(canvas, Surf, Math.Max(SurfFraction * tileSize, 1f), Blur(_surfBlur, SurfBlurFraction, tileSize));
         }
 
         /// <summary>
@@ -308,6 +559,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 
                 Stroke(
                     canvas,
+                    _path,
                     Shallows,
                     ShallowsFraction * tileSize,
                     Blur(_shallowsBlur, ShallowsBlurFraction, tileSize));
@@ -340,7 +592,9 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// </para>
         /// </summary>
         private static float Width =>
-            Math.Max(ShoreFraction, CornerFraction * CornerOvershoot * 2f * CoverMargin);
+            Math.Max(
+                ShoreFraction,
+                ((CornerFraction * CornerOvershoot) + WanderFraction) * 2f * CoverMargin);
 
         /// <summary>
         /// How much wider than the bare arithmetic the solid sand is drawn.
@@ -353,7 +607,13 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// </summary>
         private const float CoverMargin = 1.08f;
 
-        private void Stroke(SKCanvas canvas, SKColor colour, float width, SKMaskFilter? blur = null)
+        private static void Stroke(
+            SKCanvas canvas,
+            SKPath path,
+            SKColor colour,
+            float width,
+            SKMaskFilter? blur = null,
+            SKShader? speckle = null)
         {
             // Round throughout. The joins are what carry the curve round a corner inside one
             // tile; the caps are what make two tiles' worth of coast meet as one line instead
@@ -367,9 +627,98 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
                 StrokeJoin = SKStrokeJoin.Round,
                 IsAntialias = true,
                 MaskFilter = blur,
+
+                // Where there is a speckle it supplies the colour and the colour above is only
+                // what the speckle was mixed from. The paint does not own it -- it is cached and
+                // reused -- so disposing the pen must not take it with it, which is why it is
+                // never created here.
+                Shader = speckle,
+                FilterQuality = speckle is null ? SKFilterQuality.None : SKFilterQuality.Low,
             };
 
-            canvas.DrawPath(_path, pen);
+            canvas.DrawPath(path, pen);
+        }
+
+        /// <summary>
+        /// The speckled sand at one zoom level: the one texture below, scaled so that a copy of
+        /// it spans <see cref="GrainTiles"/> tiles of map.
+        /// <para>
+        /// Anchored in map space rather than to the screen, which a shader is by default --
+        /// it is laid down in the canvas's own coordinates -- so the grains stay on the stretch
+        /// of beach they belong to instead of crawling along it as the view is panned. The same
+        /// reason <see cref="GroundEdge"/> gives for never translating its noise.
+        /// </para>
+        /// </summary>
+        private SKShader Speckle(int tileSize)
+        {
+            if (_sandShader.TryGetValue(tileSize, out var shader))
+                return shader;
+
+            var scale = GrainTiles * tileSize / (float)GrainEdge;
+
+            shader = SKShader.CreateImage(
+                Grains(),
+                SKShaderTileMode.Repeat,
+                SKShaderTileMode.Repeat,
+                SKMatrix.CreateScale(scale, scale));
+
+            _sandShader[tileSize] = shader;
+
+            return shader;
+        }
+
+        /// <summary>
+        /// Sand, as a tiling texture: damp and dry in broad patches, grain over the whole of it,
+        /// and the odd shell or pebble.
+        /// <para>
+        /// The patches matter more than the grain does, which is not obvious. Grain alone is a
+        /// uniform fizz, and a uniform fizz laid along a strip is still a strip of one colour --
+        /// the eye averages it back out at any distance. What stops the beach reading as a line
+        /// somebody drew is that it is a different shade of sand fifty yards further along.
+        /// </para>
+        /// <para>
+        /// Built at most once. Two renderers racing here would each build one and one of them
+        /// would be collected unused, which is a wasted megabyte and not a wrong picture -- the
+        /// texture is a pure function of the constants above.
+        /// </para>
+        /// </summary>
+        private static SKImage Grains()
+        {
+            if (_grains is not null)
+                return _grains;
+
+            var pixels = new byte[GrainEdge * GrainEdge * 4];
+            var scale = 1f / GrainEdge;
+            var i = 0;
+
+            for (var y = 0; y < GrainEdge; y++)
+            {
+                for (var x = 0; x < GrainEdge; x++)
+                {
+                    var damp = PeriodicFbm(x * scale, y * scale, 4, 3, GrainSeed ^ 0x3B17u);
+                    var colour = LerpColor(Sand, SandDry, Smoothstep(0.32f, 0.76f, damp));
+
+                    colour = Shade(colour, (Hash01(x, y, GrainSeed) - 0.5f) * 0.30f);
+
+                    // A shell here and there, and the odd dark pebble. Sparse enough to be
+                    // something noticed rather than a texture in its own right.
+                    var fleck = Hash01(x, y, GrainSeed ^ 0xBEEFu);
+
+                    if (fleck > 0.9972f)
+                        colour = Shell;
+                    else if (fleck < 0.0028f)
+                        colour = Pebble;
+
+                    pixels[i++] = colour.Red;
+                    pixels[i++] = colour.Green;
+                    pixels[i++] = colour.Blue;
+                    pixels[i++] = 0xFF;
+                }
+            }
+
+            var info = new SKImageInfo(GrainEdge, GrainEdge, SKColorType.Rgba8888, SKAlphaType.Opaque);
+
+            return _grains = SKImage.FromPixelCopy(info, pixels);
         }
 
         private void Collect(
@@ -399,7 +748,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 
             // Not land, so it may be the sea the shallows are allowed onto -- and worth
             // gathering only when there are going to be shallows to clip.
-            if (tileSize >= MinShallowsTileSize
+            if (_gatherSea
                 && Shoreline.IsWater(world, tile.X, tile.Y)
                 && Shoreline.TouchesLand(world, tile.X, tile.Y))
             {
@@ -416,15 +765,12 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// <param name="corner">How far back from a corner the turn begins.</param>
         private void Add(TileGrid world, int x, int y, int mask, float size, float corner)
         {
-            var left = x * size;
-            var top = y * size;
-
             if (mask == Shoreline.All)
             {
                 // An island one tile across, so the coast is a closed loop with no ends. Drawn
                 // as one, rather than as four runs that would each have to stop somewhere: an
                 // end in the middle of a curve is a round cap where there should be no cap.
-                Loop(left, top, size, corner);
+                Loop(x, y, size, corner);
                 return;
             }
 
@@ -437,7 +783,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
                 if ((mask & Bit(side)) == 0 || (mask & Bit((side + 3) & 3)) != 0)
                     continue;
 
-                Run(world, x, y, mask, side, left, top, size, corner);
+                Run(world, x, y, mask, side, size, corner);
             }
         }
 
@@ -446,8 +792,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// corner it runs out at.
         /// </summary>
         private void Run(
-            TileGrid world, int x, int y, int mask, int side,
-            float left, float top, float size, float corner)
+            TileGrid world, int x, int y, int mask, int side, float size, float corner)
         {
             var placed = false;
 
@@ -456,8 +801,8 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
                 var next = (side + 1) & 3;
                 var previous = (side + 3) & 3;
 
-                var (startX, startY) = Start(side, left, top, size);
-                var (endX, endY) = End(side, left, top, size);
+                var (startX, startY) = Start(side, x, y, size);
+                var (endX, endY) = End(side, x, y, size);
                 var (stepX, stepY) = Step(side);
 
                 if (!placed)
@@ -469,7 +814,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
                     // through that corner already, and stopped exactly here.
                     var into = Turns(world, x, y, side, previous) ? corner : 0f;
 
-                    _path.MoveTo(startX + (stepX * into), startY + (stepY * into));
+                    _target.MoveTo(startX + (stepX * into), startY + (stepY * into));
                     placed = true;
                 }
 
@@ -483,7 +828,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
 
                 var trim = inside || outside ? corner : 0f;
 
-                _path.LineTo(endX - (stepX * trim), endY - (stepY * trim));
+                _target.LineTo(endX - (stepX * trim), endY - (stepY * trim));
 
                 if (!inside && !outside)
                     return;
@@ -499,7 +844,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
                 var arriving = inside ? next : previous;
                 var (nextX, nextY) = Step(arriving);
 
-                _path.QuadTo(endX, endY, endX + (nextX * corner), endY + (nextY * corner));
+                _target.QuadTo(endX, endY, endX + (nextX * corner), endY + (nextY * corner));
 
                 if (!inside)
                     return;
@@ -541,22 +886,30 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
             _ => (-1, 0),
         };
 
-        /// <summary>A tile with water on every side: a rounded square, closed.</summary>
-        private void Loop(float left, float top, float size, float corner)
+        /// <summary>
+        /// A tile with water on every side: a rounded square, closed -- and, since its four
+        /// corners are wandered like everyone else's, not much of a square.
+        /// </summary>
+        private void Loop(int x, int y, float size, float corner)
         {
-            var right = left + size;
-            var bottom = top + size;
+            var a = Start(0, x, y, size);
+            var b = Start(1, x, y, size);
+            var c = Start(2, x, y, size);
+            var d = Start(3, x, y, size);
 
-            _path.MoveTo(left + corner, top);
-            _path.LineTo(right - corner, top);
-            _path.QuadTo(right, top, right, top + corner);
-            _path.LineTo(right, bottom - corner);
-            _path.QuadTo(right, bottom, right - corner, bottom);
-            _path.LineTo(left + corner, bottom);
-            _path.QuadTo(left, bottom, left, bottom - corner);
-            _path.LineTo(left, top + corner);
-            _path.QuadTo(left, top, left + corner, top);
-            _path.Close();
+            // Trimmed back along the axes rather than along the wandered sides, exactly as Run
+            // does it: the push is a fraction of a tile and the sides are a whole one, so the
+            // difference between the two is well under a pixel at any zoom that draws a coast.
+            _target.MoveTo(a.X + corner, a.Y);
+            _target.LineTo(b.X - corner, b.Y);
+            _target.QuadTo(b.X, b.Y, b.X, b.Y + corner);
+            _target.LineTo(c.X, c.Y - corner);
+            _target.QuadTo(c.X, c.Y, c.X - corner, c.Y);
+            _target.LineTo(d.X + corner, d.Y);
+            _target.QuadTo(d.X, d.Y, d.X, d.Y - corner);
+            _target.LineTo(a.X, a.Y + corner);
+            _target.QuadTo(a.X, a.Y, a.X + corner, a.Y);
+            _target.Close();
         }
 
         /// <summary>
@@ -566,18 +919,65 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// </summary>
         private static int Bit(int side) => 1 << side;
 
-        /// <inheritdoc cref="Bit"/>
-        private static (float X, float Y) Start(int side, float left, float top, float size) => side switch
+        /// <summary>
+        /// Where a side of a tile begins, wandered.
+        /// <para>
+        /// Keyed on the corner's own place in the grid rather than on the tile asking for it,
+        /// and that is the whole of what makes this work. Every corner is shared by up to four
+        /// tiles, each of which may run a stretch of coast through it; asked from any of them it
+        /// hashes the same and comes back in the same place, so the coast stays joined. Keyed on
+        /// the tile instead, the same corner would land somewhere different depending on who was
+        /// drawing it, and the shore would come apart at every tile boundary.
+        /// </para>
+        /// </summary>
+        private (float X, float Y) Start(int side, int x, int y, float size)
         {
-            0 => (left, top),
-            1 => (left + size, top),
-            2 => (left + size, top + size),
-            _ => (left, top + size),
+            var (cx, cy) = CornerAt(side);
+
+            var gx = x + cx;
+            var gy = y + cy;
+
+            var (jx, jy) = Jitter(gx, gy, size);
+
+            return ((gx * size) + jx, (gy * size) + jy);
+        }
+
+        /// <inheritdoc cref="Start"/>
+        private (float X, float Y) End(int side, int x, int y, float size) =>
+            Start((side + 1) & 3, x, y, size);
+
+        /// <summary>Which corner of a tile a side starts at, going round clockwise.</summary>
+        private static (int X, int Y) CornerAt(int side) => side switch
+        {
+            0 => (0, 0),
+            1 => (1, 0),
+            2 => (1, 1),
+            _ => (0, 1),
         };
 
-        /// <inheritdoc cref="Bit"/>
-        private static (float X, float Y) End(int side, float left, float top, float size) =>
-            Start((side + 1) & 3, left, top, size);
+        /// <summary>
+        /// How far one corner of the grid is pushed, and which way.
+        /// <para>
+        /// Polar rather than a pair of offsets, so that the push is never longer than it says it
+        /// is. Hashing x and y separately and using them as they come would reach a further
+        /// <c>sqrt(2)</c> on the diagonal, and since <see cref="Width"/> is a promise made
+        /// against this number, a corner that quietly went half again as far would be a corner
+        /// of the tile grid showing through the sand -- rarely, diagonally, and very hard to
+        /// account for later.
+        /// </para>
+        /// </summary>
+        private (float X, float Y) Jitter(int cornerX, int cornerY, float size)
+        {
+            var reach = _wander * size;
+
+            if (reach <= 0f)
+                return (0f, 0f);
+
+            var angle = Hash01(cornerX, cornerY, _seed) * MathF.Tau;
+            var radius = Hash01(cornerX, cornerY, _seed ^ 0x9E3779B9u) * reach;
+
+            return (MathF.Cos(angle) * radius, MathF.Sin(angle) * radius);
+        }
 
         /// <summary>Which way a side is walked, as a unit step.</summary>
         private static (float X, float Y) Step(int side) => side switch
