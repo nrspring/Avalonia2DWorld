@@ -161,6 +161,9 @@ public partial class MainWindowViewModel : MapViewModelBase
         /// <summary>Four soldiers in two ranks, which is the militia's opposite in every way.</summary>
         Soldiers,
 
+        /// <summary>Horse. Foot that goes faster, which is what its chevron says.</summary>
+        Cavalry,
+
         /// <summary>A boat. The first of the three that want water rather than ground.</summary>
         SmallShip,
 
@@ -307,6 +310,18 @@ public partial class MainWindowViewModel : MapViewModelBase
         }
     }
 
+    /// <summary>Whether clicks post cavalry and stand them down.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingCavalry
+    {
+        get => _building == Enhancement.Cavalry;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Cavalry);
+        }
+    }
+
     /// <summary>Whether clicks moor a boat and cast it off.</summary>
     /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
     public bool IsBuildingSmallShip
@@ -385,6 +400,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(IsBuildingWorks));
         OnPropertyChanged(nameof(IsBuildingMilitia));
         OnPropertyChanged(nameof(IsBuildingSoldiers));
+        OnPropertyChanged(nameof(IsBuildingCavalry));
         OnPropertyChanged(nameof(IsBuildingSmallShip));
         OnPropertyChanged(nameof(IsBuildingMediumShip));
         OnPropertyChanged(nameof(IsBuildingLargeShip));
@@ -559,6 +575,7 @@ public partial class MainWindowViewModel : MapViewModelBase
                 Enhancement.Works => "Click anywhere. What gets built is whatever the ground it lands on calls for.",
                 Enhancement.Militia => "Click dry land to post militia, or a tile already held to stand them down.",
                 Enhancement.Soldiers => "Click dry land to post soldiers, or a tile already held to stand them down.",
+                Enhancement.Cavalry => "Click dry land to post cavalry, or a tile already held to stand them down.",
                 Enhancement.SmallShip => "Click water to moor a boat, or a tile with one to cast it off.",
                 Enhancement.MediumShip => "Click water to moor a cog, or a tile with one to cast it off.",
                 Enhancement.LargeShip => "Click water to moor a carrack, or a tile with one to cast it off.",
@@ -957,6 +974,7 @@ public partial class MainWindowViewModel : MapViewModelBase
     {
         Enhancement.Militia => MapRenderComponentConstants.Militia,
         Enhancement.Soldiers => MapRenderComponentConstants.Soldiers,
+        Enhancement.Cavalry => MapRenderComponentConstants.Cavalry,
         Enhancement.SmallShip => MapRenderComponentConstants.SmallShip,
         Enhancement.MediumShip => MapRenderComponentConstants.MediumShip,
         Enhancement.LargeShip => MapRenderComponentConstants.LargeShip,
@@ -975,6 +993,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         Enhancement.Bridge => "Bridge",
         Enhancement.Militia => "Militia",
         Enhancement.Soldiers => "Soldiers",
+        Enhancement.Cavalry => "Cavalry",
         Enhancement.SmallShip => "Boat",
         Enhancement.MediumShip => "Cog",
         Enhancement.LargeShip => "Carrack",
@@ -991,6 +1010,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         tile.MapRenderComponents.TryGetValue(RenderComponentLayers.Unit, out var unit)
         && (unit.ComponentType == MapRenderComponentConstants.Militia
             || unit.ComponentType == MapRenderComponentConstants.Soldiers
+            || unit.ComponentType == MapRenderComponentConstants.Cavalry
             || unit.ComponentType == MapRenderComponentConstants.SmallShip
             || unit.ComponentType == MapRenderComponentConstants.MediumShip
             || unit.ComponentType == MapRenderComponentConstants.LargeShip)

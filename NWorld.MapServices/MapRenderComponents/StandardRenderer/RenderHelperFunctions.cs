@@ -46,6 +46,7 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
             { MapRenderComponentConstants.Works, new(RenderWorks.Render) },
             { MapRenderComponentConstants.Militia, new(RenderMilitia.Render, RenderMilitia.Prewarm, RenderMilitia.ClearCache) },
             { MapRenderComponentConstants.Soldiers, new(RenderSoldiers.Render, RenderSoldiers.Prewarm, RenderSoldiers.ClearCache) },
+            { MapRenderComponentConstants.Cavalry, new(RenderCavalry.Render, RenderCavalry.Prewarm, RenderCavalry.ClearCache) },
             { MapRenderComponentConstants.SmallShip, new(RenderSmallShip.Render, RenderSmallShip.Prewarm, RenderSmallShip.ClearCache) },
             { MapRenderComponentConstants.MediumShip, new(RenderMediumShip.Render, RenderMediumShip.Prewarm, RenderMediumShip.ClearCache) },
             { MapRenderComponentConstants.LargeShip, new(RenderLargeShip.Render, RenderLargeShip.Prewarm, RenderLargeShip.ClearCache) },

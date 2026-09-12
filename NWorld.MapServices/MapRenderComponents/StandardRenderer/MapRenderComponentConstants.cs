@@ -58,6 +58,9 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         //RenderSoldiers, where that is the whole of the difference between the two.
         public static Guid Soldiers { get; } = new Guid("F11E0000-F11E-F11E-F11E-F11EF11EF11E");
 
+        //5ADD1E for the saddle, which is the thing horse have and foot do not.
+        public static Guid Cavalry { get; } = new Guid("5ADD1E00-5ADD-1E00-5ADD-1E005ADD1E00");
+
         //Ships, named for the vessel rather than for the size: a boat, a cog and a carrack.
         //Sized apart in the drawing by how many masts each carries, which is a count and so
         //needs no second ship beside it to be read -- see Vessel.

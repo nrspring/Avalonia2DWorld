@@ -24,6 +24,13 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
         /// drawn with when they were ships and their masts were the count.
         /// </summary>
         Pips,
+
+        /// <summary>
+        /// A single bold chevron, pointing the way the map faces. The only mark here that says
+        /// something about what its owner <em>does</em> rather than how it is drawn up -- an
+        /// arrowhead is movement, which is the whole of what separates horse from foot.
+        /// </summary>
+        Chevron,
     }
 
     /// <summary>
@@ -177,6 +184,28 @@ namespace NWorld.MapServices.MapRenderComponents.StandardRenderer
             paint.Color = style.Ink;
             paint.Style = SKPaintStyle.Stroke;
             paint.StrokeCap = SKStrokeCap.Round;
+
+            if (style.Mark == TokenMark.Chevron)
+            {
+                paint.StrokeWidth = Math.Max(1f, inner * 0.26f);
+
+                // Mitred rather than rounded, which is the one place on these tokens a sharp
+                // corner is wanted. A chevron with a rounded apex is a horseshoe or a smile; the
+                // point is the whole of what makes it read as pointing.
+                paint.StrokeJoin = SKStrokeJoin.Miter;
+
+                using (var chevron = new SKPath())
+                {
+                    chevron.MoveTo(centre - (inner * 0.60f), centre - (inner * 0.34f));
+                    chevron.LineTo(centre, centre + (inner * 0.42f));
+                    chevron.LineTo(centre + (inner * 0.60f), centre - (inner * 0.34f));
+
+                    canvas.DrawPath(chevron, paint);
+                }
+
+                paint.Style = SKPaintStyle.Fill;
+                return;
+            }
 
             if (style.Mark == TokenMark.Pips)
             {
