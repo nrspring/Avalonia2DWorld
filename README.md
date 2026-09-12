@@ -9,7 +9,6 @@ The repository is organized as a solution ([Avalonia2DWorld.slnx](Avalonia2DWorl
 - **Avalonia2DWorld.Map** — Shared map/tile primitives and the reusable `MapView` control: tile grids, tile placement, map interaction models (pan, zoom, drag), and persistence formats for tile maps. See [Using Avalonia2DWorld.Map](#using-avalonia2dworldmap) below.
 - **Avalonia2DWorld.MapServices** — Rendering services layered on top of `Avalonia2DWorld.Map`: the standard tile renderer, terrain/resource/unit render components (water, coastline, roads, cities, forts, units, etc.), and related caching and helper logic.
 
-There's also a [Documents](Documents) folder for planning notes.
 
 ## Status
 
