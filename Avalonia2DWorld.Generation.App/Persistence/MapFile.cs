@@ -1,6 +1,5 @@
-﻿using System;
+using System;
 using System.IO;
-using System.IO.Compression;
 using System.Text.Json;
 using Avalonia2DWorld.Map.Models;
 using Avalonia2DWorld.Map.Persistence;
@@ -85,20 +84,18 @@ public readonly record struct MapDocument(TileMap Map, MapSettings Settings);
 /// <summary>
 /// Reads and writes a whole map document.
 /// <para>
-/// A zip holding two entries: <c>map.json</c>, which is the settings and the shape of the map
-/// and is meant to be readable by a person, and <c>tiles.bin</c>, which is the tiles and is
-/// not. Splitting them that way means the part worth reading stays small and legible while
-/// the part that is a million of something stays compact -- and the container compresses the
-/// tiles for free, which matters because a map is mostly the same tile over and over.
+/// A plain sequential file: a length-prefixed JSON header carrying the settings and the shape
+/// of the map, immediately followed by the tile block <see cref="TileMapFormat"/> writes. No
+/// zip, no compression -- the header is small and meant to be read by a person if they open the
+/// file in a hex viewer, and the tile block already stores its component types through a
+/// palette rather than repeating them, so there is little left for a general-purpose compressor
+/// to buy back.
 /// </para>
 /// </summary>
 public static class MapFile
 {
     /// <summary>The extension these are saved under.</summary>
     public const string Extension = "nworld";
-
-    private const string TilesEntry = "tiles.bin";
-    private const string HeaderEntry = "map.json";
 
     private static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
@@ -108,16 +105,17 @@ public static class MapFile
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(tiles);
 
-        using var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true);
+        using var writer = new BinaryWriter(stream, System.Text.Encoding.UTF8, leaveOpen: true);
 
-        using (var header = archive.CreateEntry(HeaderEntry, CompressionLevel.Optimal).Open())
-        {
-            JsonSerializer.Serialize(header, new Header(
-                TileMapFormat.Version, tiles.Width, tiles.Height, tiles.OriginX, tiles.OriginY, settings), Json);
-        }
+        var header = JsonSerializer.SerializeToUtf8Bytes(
+            new Header(TileMapFormat.Version, tiles.Width, tiles.Height, tiles.OriginX, tiles.OriginY, settings),
+            Json);
 
-        using var payload = archive.CreateEntry(TilesEntry, CompressionLevel.Optimal).Open();
-        TileMapFormat.Write(payload, tiles);
+        writer.Write(header.Length);
+        writer.Write(header);
+        writer.Flush();
+
+        TileMapFormat.Write(stream, tiles);
     }
 
     /// <summary>
@@ -128,33 +126,23 @@ public static class MapFile
     {
         ArgumentNullException.ThrowIfNull(stream);
 
-        // Zip reading seeks, and a stream from a file picker may not. Cheap next to the map
-        // that is about to be built out of it.
-        using var buffer = new MemoryStream();
-        stream.CopyTo(buffer);
-        buffer.Position = 0;
+        using var reader = new BinaryReader(stream, System.Text.Encoding.UTF8, leaveOpen: true);
 
-        using var archive = new ZipArchive(buffer, ZipArchiveMode.Read);
+        var headerLength = reader.ReadInt32();
+        var headerBytes = reader.ReadBytes(headerLength);
 
-        var settings = new MapSettings();
+        if (headerBytes.Length != headerLength)
+            throw new InvalidDataException("This file is truncated, so it is not a map.");
 
-        if (archive.GetEntry(HeaderEntry) is { } header)
-        {
-            using var reader = header.Open();
-            settings = JsonSerializer.Deserialize<Header>(reader, Json)?.Settings ?? settings;
-        }
+        var header = JsonSerializer.Deserialize<Header>(headerBytes, Json)
+            ?? throw new InvalidDataException("This file's header could not be read, so it is not a map.");
 
-        var tiles = archive.GetEntry(TilesEntry)
-            ?? throw new InvalidDataException($"This file has no {TilesEntry}, so it is not a map.");
-
-        using var payload = tiles.Open();
-        return new MapDocument(TileMapFormat.Read(payload), settings);
+        return new MapDocument(TileMapFormat.Read(stream), header.Settings);
     }
 
     /// <summary>
-    /// What <c>map.json</c> holds. The shape is repeated from the tile block on purpose: it
-    /// is what makes the file say how big the map is without unpacking a million tiles to
-    /// find out.
+    /// What the header holds. The shape is repeated from the tile block on purpose: it is what
+    /// lets a reader say how big the map is without unpacking a million tiles to find out.
     /// </summary>
     private sealed record Header(
         int Version, int Width, int Height, int OriginX, int OriginY, MapSettings Settings);
