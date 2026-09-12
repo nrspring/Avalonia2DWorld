@@ -1,0 +1,6 @@
+﻿<Solution>
+  <Project Path="Avalonia2DWorld.Map/Avalonia2DWorld.Map.csproj" Id="2a694bb1-90a3-4abb-8905-ebdeb24ad95b" />
+  <Project Path="Avalonia2DWorld.MapServices/Avalonia2DWorld.MapServices.csproj" Id="644c33c7-3173-49e3-b60e-e82804f5d1ca" />
+  <Project Path="Avalonia2DWorld.Generation.App/Avalonia2DWorld.Generation.App.csproj" />
+  <Project Path="Avalonia2DWorld.Generation.TestApp/Avalonia2DWorld.Generation.TestApp.csproj" />
+</Solution>

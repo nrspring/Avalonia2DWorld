@@ -1,0 +1,280 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:Avalonia2DWorld.Generation.TestApp.ViewModels"
+        xmlns:map="clr-namespace:Avalonia2DWorld.Map.Controls;assembly=Avalonia2DWorld.Map"
+        mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+        x:Class="Avalonia2DWorld.Generation.TestApp.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{Binding Title}"
+        Width="1000" Height="700"
+        MinWidth="640" MinHeight="480"
+        WindowStartupLocation="CenterScreen"
+        WindowState="Maximized">
+
+    <Design.DataContext>
+        <vm:MainWindowViewModel />
+    </Design.DataContext>
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="TextPrimary" Color="#EEF3FA" />
+        <SolidColorBrush x:Key="TextMuted" Color="#8492A6" />
+        <SolidColorBrush x:Key="TextWarn" Color="#F0A742" />
+    </Window.Resources>
+
+    <Window.Styles>
+
+        <!-- The same floating card the generation app uses, cut down to the one it needs.
+             Copied rather than shared: the styles there are written against that window's
+             resources and its accordion, and lifting them into a library to save nine lines
+             would be the tail wagging the dog. -->
+        <Style Selector="Border.card">
+            <Setter Property="BorderBrush" Value="#1FFFFFFF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="12" />
+            <Setter Property="Background" Value="#E6121A26" />
+            <Setter Property="Padding" Value="14,12" />
+            <Setter Property="Margin" Value="16" />
+            <Setter Property="BoxShadow" Value="0 8 28 0 #40000000" />
+        </Style>
+
+        <Style Selector="TextBlock.note">
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <Setter Property="FontSize" Value="11.5" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <Style Selector="TextBlock.note.warn">
+            <Setter Property="Foreground" Value="{StaticResource TextWarn}" />
+        </Style>
+
+        <Style Selector="TextBlock.field">
+            <Setter Property="Foreground" Value="{StaticResource TextMuted}" />
+            <Setter Property="FontSize" Value="9.5" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="LetterSpacing" Value="1" />
+            <Setter Property="Margin" Value="2,0,0,3" />
+        </Style>
+
+        <Style Selector="Border.rule">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Background" Value="#1AFFFFFF" />
+            <Setter Property="Margin" Value="0,2" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="BoxShadow" Value="none" />
+        </Style>
+
+        <Style Selector="RadioButton">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="8,0,0,0" />
+        </Style>
+
+        <Style Selector="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Padding" Value="8,0,0,0" />
+        </Style>
+
+        <Style Selector="Button.primary">
+            <Setter Property="Background" Value="#4C8DFF" />
+            <Setter Property="Foreground" Value="#0B1220" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="14,7" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+
+        <!-- Opening a world is the one thing this window cannot do without, so it gets the
+             filled button. Saving and loading what was built on it are ordinary work and sit
+             back a step, which is also what stops the card reading as three equal choices. -->
+        <Style Selector="Button.minor">
+            <Setter Property="Background" Value="#1FFFFFFF" />
+            <Setter Property="Foreground" Value="{StaticResource TextPrimary}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+        </Style>
+
+    </Window.Styles>
+
+    <!-- The map fills the window and the one control floats over it, the same arrangement the
+         generation app uses: this is a window onto a map, not a form with a map in it. -->
+    <Panel Background="#0B1220">
+
+        <map:MapView Tiles="{Binding Tiles}"
+                     Labels="{Binding Labels}"
+                     HoverText="{Binding HoverText}"
+                     Renderer="{Binding Renderer}"
+                     Options="{Binding Options}"
+                     HoverCommand="{Binding HoverCommand}"
+                     ClickCommand="{Binding ClickCommand}"
+                     PixelClickCommand="{Binding PixelClickCommand}"
+                     PixelDragCommand="{Binding PixelDragCommand}"
+                     RightClickCommand="{Binding RightClickCommand}"
+                     ZoomCommand="{Binding ZoomCommand}"
+                     MiniMapCommand="{Binding MiniMapCommand}"
+                     PanCommand="{Binding PanCommand}" />
+
+        <Border Classes="card"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Width="220">
+
+            <StackPanel Spacing="10">
+
+                <Button Classes="primary"
+                        Content="Open"
+                        Click="OnLoadClick" />
+
+                <TextBlock Classes="note"
+                           Classes.warn="{Binding HasProblem}"
+                           Text="{Binding Status}" />
+
+                <Border Classes="rule" />
+
+                <TextBlock Classes="field" Text="ENHANCEMENTS" />
+
+                <!-- Off is one of the choices rather than a switch beside them, so that not
+                     building, which is what this window is doing most of the time, is as
+                     easy to reach as the ones that build. -->
+                <StackPanel Spacing="6" IsEnabled="{Binding HasMap}">
+                    <RadioButton Content="Off"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingNothing}" />
+                    <RadioButton Content="Road"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingRoad}" />
+                    <RadioButton Content="Bridge"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingBridge}" />
+                    <RadioButton Content="City"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingCity}" />
+                    <RadioButton Content="Fort"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingFort}" />
+                    <RadioButton Content="Factory"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingFactory}" />
+                    <RadioButton Content="Shipyard"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingShipyard}" />
+                    <RadioButton Content="Works"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingWorks}" />
+                    <RadioButton Content="Militia"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingMilitia}" />
+                    <RadioButton Content="Soldiers"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingSoldiers}" />
+                    <RadioButton Content="Cavalry"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingCavalry}" />
+                    <RadioButton Content="Boat"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingSmallShip}" />
+                    <RadioButton Content="Cog"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingMediumShip}" />
+                    <RadioButton Content="Carrack"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingLargeShip}" />
+                    <RadioButton Content="Label"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingLabel}" />
+                </StackPanel>
+
+                <!-- Only while the label tool is held. The three boxes belong to that one
+                     tool and to nothing else on the panel, and a window that showed them
+                     all the time would be a window mostly about labels. -->
+                <StackPanel Spacing="6" IsVisible="{Binding IsBuildingLabel}">
+
+                    <TextBlock Classes="field" Text="WORDS" />
+
+                    <TextBox Text="{Binding LabelText}"
+                             Watermark="Bay of Storms"
+                             FontSize="12" />
+
+                    <TextBlock Classes="field" Text="PLATE" />
+
+                    <!-- The swatch beside the box, because hex is not a colour anybody can
+                         see: the square is how you tell #E6121A26 from a typo for it, and
+                         it stops moving the moment what is typed is no longer a colour. -->
+                    <Grid ColumnDefinitions="*,8,24">
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding LabelBackgroundHex}"
+                                 FontSize="12" />
+                        <Border Grid.Column="2"
+                                Background="{Binding LabelBackgroundBrush}"
+                                BorderBrush="#3FFFFFFF"
+                                BorderThickness="1"
+                                CornerRadius="4" />
+                    </Grid>
+
+                    <TextBlock Classes="field" Text="WRITING" />
+
+                    <Grid ColumnDefinitions="*,8,24">
+                        <TextBox Grid.Column="0"
+                                 Text="{Binding LabelForegroundHex}"
+                                 FontSize="12" />
+                        <Border Grid.Column="2"
+                                Background="{Binding LabelForegroundBrush}"
+                                BorderBrush="#3FFFFFFF"
+                                BorderThickness="1"
+                                CornerRadius="4" />
+                    </Grid>
+
+                    <TextBlock Classes="note warn"
+                               IsVisible="{Binding !LabelColoursRead}"
+                               Text="One of those is not a colour. #RRGGBB or #AARRGGBB -- the last good one is still in use." />
+
+                    <!-- Rubbing out is a button and not a gesture on the map, because a click
+                         on writing already means picking it up, which is what makes it
+                         draggable. A delete you could trip over would be the worse trade. -->
+                    <Button Classes="minor"
+                            Content="Rub out"
+                            IsEnabled="{Binding HasPickedLabel}"
+                            Command="{Binding RubOutCommand}" />
+
+                </StackPanel>
+
+                <TextBlock Classes="note" Text="{Binding BuildSummary}" />
+
+                <!-- What was built is saved beside the world, never into it: the world is
+                     finished when it is generated and this window only ever writes the layer
+                     over it. The line above doubles as the report, since saving and loading
+                     are the same subject as the clicks that made the thing being saved. -->
+                <Grid ColumnDefinitions="*,8,*" IsEnabled="{Binding HasMap}">
+                    <Button Grid.Column="0"
+                            Classes="minor"
+                            Content="Save built"
+                            Click="OnSaveEnhancementsClick" />
+                    <Button Grid.Column="2"
+                            Classes="minor"
+                            Content="Load built"
+                            Click="OnLoadEnhancementsClick" />
+                </Grid>
+
+                <!-- Said here because there is nothing else on screen to discover it from:
+                     the map takes the wheel and the right button, and neither is obvious on a
+                     window with one button on it. -->
+                <TextBlock Classes="note"
+                           Text="Wheel zooms. Right-drag pans. The inset jumps." />
+
+            </StackPanel>
+        </Border>
+
+    </Panel>
+
+</Window>

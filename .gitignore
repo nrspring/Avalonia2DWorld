@@ -386,10 +386,10 @@ test-results/
 # Mac bundle stuff
 *.dmg
 *.app
-!NWorld.WorldGeneration.App/
-!NWorld.WorldGeneration.App/**
-!NWorld.Generation.App/
-!NWorld.Generation.App/**
+!Avalonia2DWorld.WorldGeneration.App/
+!Avalonia2DWorld.WorldGeneration.App/**
+!Avalonia2DWorld.Generation.App/
+!Avalonia2DWorld.Generation.App/**
 
 # content below from: https://github.com/github/gitignore/blob/master/Global/macOS.gitignore
 # General
@@ -457,9 +457,9 @@ $RECYCLE.BIN/
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
-/NWorld.WorldGeneration.App/bin/
-/NWorld.WorldGeneration.App/obj
-/NWorld.Generation.App/bin/
-/NWorld.Generation.App/obj
+/Avalonia2DWorld.WorldGeneration.App/bin/
+/Avalonia2DWorld.WorldGeneration.App/obj
+/Avalonia2DWorld.Generation.App/bin/
+/Avalonia2DWorld.Generation.App/obj
 /2.nworldmap
 *.nworldmap

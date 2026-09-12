@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.2.1" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.1" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.1" />
+    <PackageReference Include="Avalonia.Diagnostics" Version="11.2.1" Condition="'$(Configuration)' == 'Debug'" />
+    <!-- Transitive via Avalonia.Desktop -> Avalonia.X11. Pinned to the patched
+         version for GHSA-xrw6-gwf8-vvr9 (NU1903); remove once Avalonia bumps it. -->
+    <PackageReference Include="Tmds.DBus.Protocol" Version="0.21.3" />
+  </ItemGroup>
+
+  <!-- The map and how to draw it, and deliberately not Avalonia2DWorld.Generation.App. This app opens
+       a finished world and looks at it; it has no panels, builds nothing, and should not be
+       able to. See MapArchive for what that costs at the file format. -->
+  <ItemGroup>
+    <ProjectReference Include="..\Avalonia2DWorld.MapServices\Avalonia2DWorld.MapServices.csproj" />
+    <ProjectReference Include="..\Avalonia2DWorld.Map\Avalonia2DWorld.Map.csproj" />
+  </ItemGroup>
+
+</Project>
