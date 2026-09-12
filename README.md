@@ -4,8 +4,8 @@ A hobby project exploring procedural world generation and tile-based 2D map rend
 
 The repository is organized as a solution ([Avalonia2DWorld.slnx](Avalonia2DWorld.slnx)) of a few focused projects rather than one monolithic app:
 
-- **Avalonia2DWorld.Generation.App** — The main Avalonia desktop application. Procedurally generates world maps (continents, islands, lakes, rivers, terrain, resources, ground cover, etc.) and lets you view/save the results.
-- **Avalonia2DWorld.Generation.TestApp** — A secondary Avalonia app used for testing/inspecting generated map archives outside of the main generation workflow.
+- **Avalonia2DWorld.Generation.App** — The main Avalonia desktop application. Procedurally generates world maps (continents, islands, lakes, rivers, terrain, resources, ground cover, etc.) and lets you view/save the results. See [Avalonia2DWorld.Generation.App](#avalonia2dworldgenerationapp) below.
+- **Avalonia2DWorld.Generation.TestApp** — A secondary Avalonia app for testing units and enhancements (roads, towns, forts, ships, etc.) against a finished map, without touching the generator. See [Avalonia2DWorld.Generation.TestApp](#avalonia2dworldgenerationtestapp) below.
 - **Avalonia2DWorld.Map** — Shared map/tile primitives and the reusable `MapView` control: tile grids, tile placement, map interaction models (pan, zoom, drag), and persistence formats for tile maps. See [Using Avalonia2DWorld.Map](#using-avalonia2dworldmap) below.
 - **Avalonia2DWorld.MapServices** — Rendering services layered on top of `Avalonia2DWorld.Map`: the standard tile renderer, terrain/resource/unit render components (water, coastline, roads, cities, forts, units, etc.), and related caching and helper logic.
 
@@ -14,6 +14,76 @@ There's also a [Documents](Documents) folder for planning notes.
 ## Status
 
 This is an actively evolving personal project. Expect things to move fast and documentation to lag behind the code — more details will be added here as the project stabilizes.
+
+## Avalonia2DWorld.Generation.App
+
+The purpose of this app is to make new maps: it's a hand-driven, panel-based world builder. You dial in some settings, press a button, and a procedural pass writes the result onto the map you're looking at — then you dial in the next thing (mountains, rivers, resources...) and press the next button, layering passes until the world looks right. The finished map is what everything else in the repo (`Avalonia2DWorld.Map`, `Avalonia2DWorld.MapServices`) exists to draw and to consume.
+
+### Running it
+
+```bash
+dotnet run --project Avalonia2DWorld.Generation.App
+```
+
+The window opens with an empty map view and a floating stack of collapsible panels ("cards") down the left side, over the map. Nothing is generated until you tell it to.
+
+### Workflow
+
+The panels are meant to be worked top to bottom, since later passes generally build on what earlier ones left:
+
+1. **File** — Open (`.nworld` map files, via `Avalonia2DWorld.Generation.App.Persistence.MapFile`) or Save the current map. A save writes the tiles *and* the panel settings that produced them, so reopening a file puts every dial back where it was — the point being that a map is something you keep working on, not just a picture you export.
+2. **Start** — Type a width and height (in tiles; capped at 4096 per side and ~1,048,576 tiles total) and press **Create**. This throws away whatever map is open and makes a new blank one — open ocean, nothing on it — for the rest of the panels to build on.
+3. **Base Land** — Grows the land the rest of the world sits on:
+   - **Continents**: how many, how much of the map ends up as land, and how ragged the coastline is. Rebuilds the map as sea and raises fresh continents into it every time it's pressed — it replaces rather than adds.
+   - **Islands**: scatters island count/size/coastal-preference on top of the existing continents (adds rather than replaces).
+   - **Shallows**: marks a paler band of shallow water near every coast, purely a rendering distinction (no elevation change). Re-run after any change to the coastline.
+4. **Hills and Mountains** — Raises the flat land into relief: hill coverage/spread, and mountain coverage/ruggedness/range size, sharing one seed. Each button (**Raise Hills**, **Raise Mountains**) replaces its own layer without disturbing the other. Mountains get first claim on the terrain field; hills fill in what's left.
+5. **Swamps and Deserts** — Spreads ground cover (swamp favors low, coastal-leaning land; desert favors dry interior) in place of grass, sharing a patch size and clustering amount. Neither touches height or coastline; whichever is pressed first gets first pick of contested ground.
+6. **Rivers** — Runs rivers from the hills down to the sea, merging into tributaries where they meet. **Add Rivers** adds to what's already there rather than replacing it — press again to fill in more of the map.
+7. **Lakes** — Fills hollows in low ground with standing water, shaped from the terrain rather than dropped as a preset shape. Also additive.
+8. **Resources** — Scatters deposits (iron, wood, oil, sulphur, stone) onto the finished land, each favoring different terrain (ore and stone want high ground, wood and oil want lowland, sulphur wants the ranges themselves). A tile holds one deposit at a time. Run this last — anything that rebuilds the land underneath (a new coastline, new terrain) takes the deposits on it along for the ride.
+9. **Edit Tiles** — A hand-editing mode: while this panel is open, clicking the map raises/lowers elevation, flips a sea tile between deep/shallow, or lays/lifts the selected resource, depending on which tool is armed. For touch-ups a generation pass didn't quite get right, not for building a map from scratch.
+10. **View** — How the map is drawn, not what's on it: switch between the Terrain / Elevation / Resources pictures (the same map, three different renderers — see `_terrainView`/`_heightView`/`_resourceView` in `MainWindowViewModel`), toggle water animation, the frame-rate readout, and elevation numbers drawn over each tile.
+
+**Undo** (button, or Ctrl+Z) steps back through up to 5 whole-map snapshots — one per pass, so a run of several Edit Tiles clicks counts as a single step. Every seed field has its own **New** button for a random reroll; typing the same seed with the same settings always reproduces the same result, since generation is deterministic.
+
+### Architecture notes
+
+- `ViewModels/MainWindowViewModel.cs` is the app: it owns the live `TileMap`, every dial's bindable property, the undo history, and the commands each button invokes. It derives from `Avalonia2DWorld.Map.ViewModels.MapViewModelBase` (pan/zoom/mini-map) and adds everything specific to *this* map.
+- `Generation/` holds the procedural passes themselves (`ContinentBuilder`, `IslandBuilder`, `TerrainBuilder`, `RiverBuilder`, `LakeBuilder`, `ResourceBuilder`, `GroundCoverBuilder`, `ShallowsBuilder`, plus shared helpers like `SimplexNoise` and `LandTopology`) — each one takes the current tiles/land mask and settings, and returns what the next state should be. `MainWindowViewModel` calls these and publishes the result through `TileMap.Edit`.
+- `Persistence/MapFile.cs` defines the save format (`MapSettings` + the tile data) and how it's written/read.
+- The renderer bound to the map view is `Avalonia2DWorld.MapServices`' `StandardRenderer` (see [Writing a custom renderer](#writing-a-custom-renderer) above) plus two purpose-built alternates, `ElevationRenderer` and `ResourceRenderer`, swapped in by the View panel.
+
+## Avalonia2DWorld.Generation.TestApp
+
+The purpose of this app is to test units and enhancements — the things built or posted *on* a finished map — against a real world, without dragging in everything the generator does. It opens a `.nworld` map produced by `Avalonia2DWorld.Generation.App`, treats that world as read-only, and lets you click around laying down roads, buildings, and units to see how they actually render and behave (rotation, adjacency shapes, placement rules) — the same render components `Avalonia2DWorld.MapServices` ships, exercised interactively instead of through code.
+
+### Running it
+
+```bash
+dotnet run --project Avalonia2DWorld.Generation.TestApp
+```
+
+The window opens empty; press **Open** to load a `.nworld` map file (via `MapArchive`, in `Avalonia2DWorld.Generation.TestApp.Persistence`).
+
+### What it's for
+
+The world itself is never edited — it's loaded, drawn, and left exactly as it was generated. Everything this app changes lives on top of it, on two layers `MapTile` already reserves for exactly this (`RenderComponentLayers.Enhancement` and `RenderComponentLayers.Unit`), plus free-floating map labels:
+
+- **Enhancements** (built on a tile): **Road**, **Bridge** (roads need dry land; bridges need water), **City** (adjacent city tiles grow into one town), **Fort**, **Factory**, **Shipyard** (needs water adjacent to launch into), **Works** (goes anywhere; draws itself based on whatever resource deposit is under it, if any).
+- **Units** (standing on a tile, a separate layer so a tile can hold a building *and* a unit): **Militia**, **Soldiers**, **Cavalry** — all need dry land — and **Boat**/**Cog**/**Carrack** (small/medium/large ships), which need water.
+- **Labels**: free-text map writing, placed at a pixel rather than a tile, with configurable background/foreground colors (typed as `#RRGGBB` / `#AARRGGBB` hex). Click open ground to write, click existing writing to edit it, drag to move it, or use **Rub out** to delete what's currently picked.
+
+One radio button is armed at a time (**Off** included, so "do nothing" is as easy to reach as any tool) and a click on the map does whatever that tool does: build/post if the tile is clear, or lift/stand-down if it already holds something. Right-click turns a road/bridge a quarter turn where it has no neighbour to take its shape from. The line under the tool list reports what the last click did or why it was refused (e.g. "is water. A road needs dry ground -- build a bridge.").
+
+**Save built** / **Load built** write and read a separate `.nworldx` file (via `EnhancementFile`, in `Avalonia2DWorld.MapServices.Persistence`) holding just the enhancement/unit/label layer — never the world itself — so the same base map can carry different sets of test content, and a saved enhancement file is named after the map it was built on (`<mapname>.nworldx`).
+
+### Architecture notes
+
+- `ViewModels/MainWindowViewModel.cs` owns the loaded map and the "what tool is armed / what did the last click do" state; it derives from `Avalonia2DWorld.Map.ViewModels.MapViewModelBase` for pan/zoom/mini-map, same as the generation app.
+- Placement rules (dry land vs. water, adjacency for shipyards) are enforced here at the point of the click, using the same helpers (`Shoreline`, `ComponentParams`) the renderers themselves use to decide what to draw — so what this app allows you to build is what the renderer can actually make sense of.
+- The frame-rate readout is on by default in this app (off in the generation app): this is where a render component gets worked on tile by tile, so any per-tile cost shows up here first.
+- `Persistence/MapArchive.cs` reads the `.nworld` map format the generation app writes; `Avalonia2DWorld.MapServices.Persistence.EnhancementFile` reads/writes the `.nworldx` overlay this app owns.
 
 ## Using Avalonia2DWorld.Map
 
