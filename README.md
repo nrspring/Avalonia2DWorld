@@ -19,6 +19,8 @@ This is an actively evolving personal project. Expect things to move fast and do
 
 The purpose of this app is to make new maps: it's a hand-driven, panel-based world builder. You dial in some settings, press a button, and a procedural pass writes the result onto the map you're looking at — then you dial in the next thing (mountains, rivers, resources...) and press the next button, layering passes until the world looks right. The finished map is what everything else in the repo (`Avalonia2DWorld.Map`, `Avalonia2DWorld.MapServices`) exists to draw and to consume.
 
+![Avalonia2DWorld.Generation.App: a generated world with mountains, rivers, and scattered resources, with the panel stack open along the left edge](docs/screenshots/generation-app.jpg)
+
 ### Running it
 
 ```bash
@@ -57,6 +59,8 @@ The panels are meant to be worked top to bottom, since later passes generally bu
 ## Avalonia2DWorld.Generation.TestApp
 
 The purpose of this app is to test units and enhancements — the things built or posted *on* a finished map — against a real world, without dragging in everything the generator does. It opens a `.nworld` map produced by `Avalonia2DWorld.Generation.App`, treats that world as read-only, and lets you click around laying down roads, buildings, and units to see how they actually render and behave (rotation, adjacency shapes, placement rules) — the same render components `Avalonia2DWorld.MapServices` ships, exercised interactively instead of through code.
+
+![Avalonia2DWorld.Generation.TestApp: a loaded map with a town, road, bridge, and fort built on it, and the Enhancements panel open on the left](docs/screenshots/generation-testapp.jpg)
 
 ### Running it
 
