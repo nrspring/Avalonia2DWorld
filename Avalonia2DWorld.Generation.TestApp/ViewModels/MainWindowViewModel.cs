@@ -122,6 +122,11 @@ public partial class MainWindowViewModel : MapViewModelBase
         /// <summary>The same road carried over water.</summary>
         Bridge,
 
+        /// <summary>
+        /// A stone wall, on dry land. Laid and turned like a road, but it joins only more wall.
+        /// </summary>
+        Wall,
+
         /// <summary>A piece of a town. Lay them beside each other and the town grows.</summary>
         City,
 
@@ -241,6 +246,18 @@ public partial class MainWindowViewModel : MapViewModelBase
         {
             if (value)
                 Arm(Enhancement.Bridge);
+        }
+    }
+
+    /// <summary>Whether clicks raise and pull down walls.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingWall
+    {
+        get => _building == Enhancement.Wall;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Wall);
         }
     }
 
@@ -412,6 +429,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(IsBuildingRoad));
         OnPropertyChanged(nameof(IsBuildingPath));
         OnPropertyChanged(nameof(IsBuildingBridge));
+        OnPropertyChanged(nameof(IsBuildingWall));
         OnPropertyChanged(nameof(IsBuildingCity));
         OnPropertyChanged(nameof(IsBuildingFort));
         OnPropertyChanged(nameof(IsBuildingFactory));
@@ -588,6 +606,7 @@ public partial class MainWindowViewModel : MapViewModelBase
                 Enhancement.Road => "Click dry land to lay a road, or an existing one to lift it.",
                 Enhancement.Path => "Click dry land to lay a path, or an existing one to lift it.",
                 Enhancement.Bridge => "Click water to lay a bridge, or an existing one to lift it.",
+                Enhancement.Wall => "Click dry land to raise a wall, or an existing one to pull it down. Lengths beside each other join up.",
                 Enhancement.City => "Click dry land to build. Tiles beside each other grow into one town.",
                 Enhancement.Fort => "Click dry land to build. A gate opens on whichever side a road reaches it.",
                 Enhancement.Factory => "Click dry land to build. The yard opens an apron wherever a road reaches it.",
@@ -690,6 +709,7 @@ public partial class MainWindowViewModel : MapViewModelBase
                   || standing == MapRenderComponentConstants.Factory
                   || standing == MapRenderComponentConstants.Shipyard
                   || standing == MapRenderComponentConstants.Works
+                  || standing == MapRenderComponentConstants.Wall
                     ? "is pulled down."
                     : "is clear again.");
 
@@ -720,6 +740,7 @@ public partial class MainWindowViewModel : MapViewModelBase
                 Enhancement.Factory => "is water. A factory wants ground to stand on.",
                 Enhancement.Shipyard => "is water. A yard is built beside the water, not in it.",
                 Enhancement.Path => "is water. A path needs dry ground -- build a bridge.",
+                Enhancement.Wall => "is water. A wall wants ground to stand on.",
                 _ => "is water. A road needs dry ground -- build a bridge.",
             });
 
@@ -740,6 +761,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         {
             Enhancement.Bridge => MapRenderComponentConstants.Bridge,
             Enhancement.Path => MapRenderComponentConstants.Path,
+            Enhancement.Wall => MapRenderComponentConstants.Wall,
             Enhancement.City => MapRenderComponentConstants.City,
             Enhancement.Fort => MapRenderComponentConstants.Fort,
             Enhancement.Factory => MapRenderComponentConstants.Factory,
@@ -765,6 +787,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         {
             Enhancement.Bridge => "carries a bridge.",
             Enhancement.Path => "has a path.",
+            Enhancement.Wall => "is walled.",
             Enhancement.City => "is built on.",
             Enhancement.Fort => "holds a fort.",
             Enhancement.Factory => "holds a factory.",
@@ -1015,6 +1038,7 @@ public partial class MainWindowViewModel : MapViewModelBase
     {
         Enhancement.Bridge => "Bridge",
         Enhancement.Path => "Path",
+        Enhancement.Wall => "Wall",
         Enhancement.Militia => "Militia",
         Enhancement.Soldiers => "Soldiers",
         Enhancement.Cavalry => "Cavalry",
@@ -1047,6 +1071,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         && (built.ComponentType == MapRenderComponentConstants.Road
             || built.ComponentType == MapRenderComponentConstants.Path
             || built.ComponentType == MapRenderComponentConstants.Bridge
+            || built.ComponentType == MapRenderComponentConstants.Wall
             || built.ComponentType == MapRenderComponentConstants.City
             || built.ComponentType == MapRenderComponentConstants.Fort
             || built.ComponentType == MapRenderComponentConstants.Factory

@@ -160,6 +160,9 @@
                     <RadioButton Content="Bridge"
                                  GroupName="enhancement"
                                  IsChecked="{Binding IsBuildingBridge}" />
+                    <RadioButton Content="Wall"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingWall}" />
                     <RadioButton Content="City"
                                  GroupName="enhancement"
                                  IsChecked="{Binding IsBuildingCity}" />

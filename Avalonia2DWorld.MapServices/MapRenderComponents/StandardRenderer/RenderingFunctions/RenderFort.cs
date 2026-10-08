@@ -96,11 +96,12 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer.Rende
         /// <summary>
         /// The curtain's flank, well darker than the stone it is built of. What is seen of a wall
         /// from overhead is mostly the shaded side of it, the same as a bridge's parapet.
+        /// Shared with <see cref="RenderWall"/>, so a wall laid beside a fort is the same stone.
         /// </summary>
-        private static readonly SKColor WallFace = new(0x53, 0x4E, 0x46);
+        internal static readonly SKColor WallFace = new(0x53, 0x4E, 0x46);
 
         /// <summary>The walkway along the top of the curtain, which is the part facing the sky.</summary>
-        private static readonly SKColor WallTop = new(0x9C, 0x96, 0x89);
+        internal static readonly SKColor WallTop = new(0x9C, 0x96, 0x89);
 
         /// <summary>A tower top, a shade above the wall walk: it stands higher, so it catches more.</summary>
         private static readonly SKColor TowerTop = new(0xA8, 0xA1, 0x93);
@@ -122,7 +123,7 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer.Rende
         private static readonly SKColor Gateway = new(0x37, 0x32, 0x2B);
 
         /// <summary>What the work throws onto the ground beside and below it.</summary>
-        private static readonly SKColor Shadow = new(0x16, 0x12, 0x0E, 0x77);
+        internal static readonly SKColor Shadow = new(0x16, 0x12, 0x0E, 0x77);
 
         private static readonly StoneSpan Span = new(0xF0B71Fu, Draw, runsWhenAlone: false);
 

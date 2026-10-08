@@ -35,6 +35,7 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
             { MapRenderComponentConstants.Stone, new(RenderStone.Render, RenderStone.Prewarm, RenderStone.ClearCache) },
             { MapRenderComponentConstants.Road, new(RenderRoad.Render, RenderRoad.Prewarm, RenderRoad.ClearCache) },
             { MapRenderComponentConstants.Path, new(RenderPath.Render, RenderPath.Prewarm, RenderPath.ClearCache) },
+            { MapRenderComponentConstants.Wall, new(RenderWall.Render, RenderWall.Prewarm, RenderWall.ClearCache) },
             { MapRenderComponentConstants.Bridge, new(RenderBridge.Render, RenderBridge.Prewarm, RenderBridge.ClearCache) },
             { MapRenderComponentConstants.City, new(RenderCity.Render, RenderCity.Prewarm, RenderCity.ClearCache) },
             { MapRenderComponentConstants.Fort, new(RenderFort.Render, RenderFort.Prewarm, RenderFort.ClearCache) },

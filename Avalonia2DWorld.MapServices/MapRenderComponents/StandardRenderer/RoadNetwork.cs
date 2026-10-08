@@ -102,5 +102,26 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
             world.At(x, y) is { } tile
             && tile.MapRenderComponents.TryGetValue(RenderComponentLayers.Enhancement, out var built)
             && built.ComponentType == MapRenderComponentConstants.City;
+
+        /// <summary>
+        /// Which sides of a tile have more wall on them, as four bits.
+        /// <para>
+        /// Its own network and not part of the one above. A wall is something to keep a road
+        /// out, not something a road runs along, so a road beside a wall leaves both of them
+        /// alone -- and a wall bending towards every road, town or fort beside it would never
+        /// run straight.
+        /// </para>
+        /// </summary>
+        public static int WallMask(TileGrid world, int x, int y) =>
+            (IsWall(world, x, y - 1) ? North : 0)
+            | (IsWall(world, x + 1, y) ? East : 0)
+            | (IsWall(world, x, y + 1) ? South : 0)
+            | (IsWall(world, x - 1, y) ? West : 0);
+
+        /// <inheritdoc cref="WallMask"/>
+        private static bool IsWall(TileGrid world, int x, int y) =>
+            world.At(x, y) is { } tile
+            && tile.MapRenderComponents.TryGetValue(RenderComponentLayers.Enhancement, out var built)
+            && built.ComponentType == MapRenderComponentConstants.Wall;
     }
 }

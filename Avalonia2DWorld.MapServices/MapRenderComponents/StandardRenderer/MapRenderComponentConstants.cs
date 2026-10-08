@@ -38,6 +38,8 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
 
         //D127 for dirt: the same way as a road, worn rather than laid. See RenderPath.
         public static Guid Path { get; } = new Guid("D1270000-D127-D127-D127-D127D127D127");
+        //3A11 for a wall. Joins only more wall -- see RenderWall.
+        public static Guid Wall { get; } = new Guid("3A110000-3A11-3A11-3A11-3A113A113A11");
         public static Guid Bridge { get; } = new Guid("B41D6E00-B41D-B41D-B41D-B41DB41DB41D");
         public static Guid City { get; } = new Guid("C17700FF-C177-C177-C177-C177C177C177");
         public static Guid Fort { get; } = new Guid("F0770000-F077-F077-F077-F077F077F077");
