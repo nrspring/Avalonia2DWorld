@@ -5,7 +5,7 @@ using SkiaSharp;
 namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions
 {
     /// <summary>
-    /// Cavalry: a crimson token, struck true, with a chevron pointing down the map.
+    /// Cavalry: a crimson token, struck true, with a C on it.
     /// <para>
     /// The third land token, and the one with the least room to move. Two hues were already
     /// spoken for on ground -- the militia's warm ochre and the soldiers' cold navy -- and a
@@ -19,12 +19,6 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer.Rende
     /// the militia. Ochre and brick are both warm, and at a handful of pixels on green they
     /// converge; a crimson with some blue in it does not, however small it gets.
     /// </para>
-    /// <para>
-    /// The chevron is the only device here that says what its owner does rather than how it is
-    /// drawn up. The militia's crossed staves and the soldiers' rank are both statements about
-    /// order, because that is what separates those two from each other. Horse are not
-    /// better-ordered foot -- they are faster -- so the mark is an arrowhead.
-    /// </para>
     /// </summary>
     public static class RenderCavalry
     {
@@ -37,8 +31,9 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer.Rende
                 Rim: new SKColor(0x40, 0x12, 0x1C),
                 RimShare: 0.09f,
                 Ink: new SKColor(0xF6, 0xE4, 0xE2),
-                Mark: TokenMark.Chevron,
-                Rough: false),
+                Mark: TokenMark.Letter,
+                Rough: false,
+                Letter: 'C'),
             Seed);
 
         public static Task Render(TileRenderContext context) => Token.Render(context);

@@ -5,13 +5,12 @@ using SkiaSharp;
 namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions
 {
     /// <summary>
-    /// Soldiers: a dark steel token, struck true, with a bright rim and three uprights ranked
-    /// across it.
+    /// Soldiers: a dark steel token, struck true, with a bright rim and an S on it.
     /// <para>
     /// Read against <see cref="RenderMilitia"/> and never on its own, because that is how it will
     /// be seen. Dark where the militia is pale, cold where it is warm, ringed in bright metal
-    /// where it has a thin dark edge, perfectly round where it is hand-cut, and marked with a
-    /// rank where it is marked with a mess.
+    /// where it has a thin dark edge, perfectly round where it is hand-cut, and lettered pale
+    /// where it is lettered dark.
     /// </para>
     /// <para>
     /// The bright rim is the one that carries furthest. A device closes to a smudge and a hue
@@ -39,8 +38,9 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer.Rende
                 // second disc.
                 RimShare: 0.09f,
                 Ink: new SKColor(0xE2, 0xE8, 0xEE),
-                Mark: TokenMark.Ranked,
-                Rough: false),
+                Mark: TokenMark.Letter,
+                Rough: false,
+                Letter: 'S'),
             Seed);
 
         public static Task Render(TileRenderContext context) => Token.Render(context);

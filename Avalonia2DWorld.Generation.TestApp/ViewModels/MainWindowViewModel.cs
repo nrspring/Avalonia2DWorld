@@ -172,7 +172,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         /// <summary>Four soldiers in two ranks, which is the militia's opposite in every way.</summary>
         Soldiers,
 
-        /// <summary>Horse. Foot that goes faster, which is what its chevron says.</summary>
+        /// <summary>Horse. Foot that goes faster.</summary>
         Cavalry,
 
         /// <summary>

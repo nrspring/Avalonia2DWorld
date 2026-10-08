@@ -5,13 +5,12 @@ using SkiaSharp;
 namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer.RenderingFunctions
 {
     /// <summary>
-    /// Militia: a rough ochre token with two staves crossed on it.
+    /// Militia: a rough ochre token with an M on it.
     /// <para>
     /// Everything about it is <see cref="RenderSoldiers"/>'s opposite rather than its neighbour,
     /// which is the whole design -- see <see cref="UnitToken"/> for why the differences are
     /// stacked five deep. Pale where the soldiers are dark, warm where they are cold, cut by hand
-    /// where theirs is struck true, and marked with two staves thrown across each other where
-    /// theirs carries a rank.
+    /// where theirs is struck true, and lettered in dark ink where theirs is lettered in pale.
     /// </para>
     /// <para>
     /// Ochre and dark ink, so the token is a light shape with a dark mark on it. That inversion
@@ -36,8 +35,9 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer.Rende
                 // wobble, rather than as a disc somebody cut badly.
                 RimShare: 0.09f,
                 Ink: new SKColor(0x3A, 0x28, 0x12),
-                Mark: TokenMark.Crossed,
-                Rough: true),
+                Mark: TokenMark.Letter,
+                Rough: true,
+                Letter: 'M'),
             Seed);
 
         public static Task Render(TileRenderContext context) => Token.Render(context);

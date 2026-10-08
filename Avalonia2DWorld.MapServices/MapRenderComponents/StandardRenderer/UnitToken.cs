@@ -12,11 +12,12 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
         /// <summary>Nothing. The colour and the rim carry it alone.</summary>
         None,
 
-        /// <summary>Two staves crossed: arms held anyhow, which is disorder drawn as a shape.</summary>
-        Crossed,
-
-        /// <summary>Three uprights side by side: a rank, which is order drawn as the same shape.</summary>
-        Ranked,
+        /// <summary>
+        /// A single capital letter: M for militia, S for soldiers, C for cavalry. Read rather
+        /// than recognised, which is the point -- a letter needs no key, and nobody has to learn
+        /// which shape of mark means which kind of man.
+        /// </summary>
+        Letter,
 
         /// <summary>
         /// A row of pips, counted. For things that come in sizes rather than in kinds: a count
@@ -25,12 +26,6 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
         /// </summary>
         Pips,
 
-        /// <summary>
-        /// A single bold chevron, pointing the way the map faces. The only mark here that says
-        /// something about what its owner <em>does</em> rather than how it is drawn up -- an
-        /// arrowhead is movement, which is the whole of what separates horse from foot.
-        /// </summary>
-        Chevron,
     }
 
     /// <summary>
@@ -53,6 +48,7 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
     /// gone to mud -- which is why the three levels of each kind of ship use it rather than sharing one size.
     /// </param>
     /// <param name="Count">How many pips, where <see cref="TokenMark.Pips"/> is the mark.</param>
+    /// <param name="Letter">Which letter, where <see cref="TokenMark.Letter"/> is the mark.</param>
     internal readonly record struct TokenStyle(
         SKColor Face,
         SKColor Rim,
@@ -61,7 +57,8 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
         TokenMark Mark,
         bool Rough,
         float Radius = 0.30f,
-        int Count = 0);
+        int Count = 0,
+        char Letter = ' ');
 
     /// <summary>
     /// A round marker standing on a tile: what a body of men comes to when it has to be
@@ -172,75 +169,57 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
         }
 
         /// <summary>
-        /// The device: crossed staves or a rank of uprights, which are the same idea the men were
-        /// drawn with when they were men -- disorder against order -- said in a shape that does
-        /// not need thirty pixels to be seen.
+        /// A bold sans serif, for the letters. The first of these that the machine has; failing
+        /// all of them Skia's own default, which is still a letter.
         /// </summary>
+        private static readonly SKTypeface? LetterTypeface =
+            SKTypeface.FromFamilyName("Segoe UI", SKFontStyle.Bold)
+            ?? SKTypeface.FromFamilyName("Arial", SKFontStyle.Bold);
+
+        /// <summary>The device in the middle of the token: a letter, a row of pips, or nothing.</summary>
         private static void Mark(SKCanvas canvas, SKPaint paint, float centre, float inner, TokenStyle style)
         {
-            if (style.Mark == TokenMark.None)
-                return;
-
             paint.Color = style.Ink;
-            paint.Style = SKPaintStyle.Stroke;
-            paint.StrokeCap = SKStrokeCap.Round;
 
-            if (style.Mark == TokenMark.Chevron)
-            {
-                paint.StrokeWidth = Math.Max(1f, inner * 0.26f);
-
-                // Mitred rather than rounded, which is the one place on these tokens a sharp
-                // corner is wanted. A chevron with a rounded apex is a horseshoe or a smile; the
-                // point is the whole of what makes it read as pointing.
-                paint.StrokeJoin = SKStrokeJoin.Miter;
-
-                using (var chevron = new SKPath())
-                {
-                    chevron.MoveTo(centre - (inner * 0.60f), centre - (inner * 0.34f));
-                    chevron.LineTo(centre, centre + (inner * 0.42f));
-                    chevron.LineTo(centre + (inner * 0.60f), centre - (inner * 0.34f));
-
-                    canvas.DrawPath(chevron, paint);
-                }
-
-                paint.Style = SKPaintStyle.Fill;
-                return;
-            }
-
-            if (style.Mark == TokenMark.Pips)
-            {
+            if (style.Mark == TokenMark.Letter)
+                Letter(canvas, paint, centre, inner, style);
+            else if (style.Mark == TokenMark.Pips)
                 Pips(canvas, paint, centre, inner, style.Count);
-                paint.Style = SKPaintStyle.Fill;
+        }
+
+        /// <summary>
+        /// One capital letter, centred on the token by its own ink rather than by its baseline.
+        /// <para>
+        /// Sized to the glyph and not to the font. A font size says how tall the line is, and a
+        /// capital fills only part of that, by different amounts in different faces -- so the
+        /// letter is measured once at a trial size and scaled until it is as tall as wanted, or
+        /// as wide, whichever comes first. M is the widest of the three by a distance, and
+        /// without the width limit it would reach the rim long before S and C filled the disc.
+        /// </para>
+        /// </summary>
+        private static void Letter(SKCanvas canvas, SKPaint paint, float centre, float inner, TokenStyle style)
+        {
+            var glyph = style.Letter.ToString();
+
+            using var pen = new SKPaint
+            {
+                IsAntialias = true,
+                Style = SKPaintStyle.Fill,
+                Color = style.Ink,
+                Typeface = LetterTypeface,
+                TextSize = inner,
+            };
+
+            var bounds = new SKRect();
+            pen.MeasureText(glyph, ref bounds);
+
+            if (bounds.Width <= 0 || bounds.Height <= 0)
                 return;
-            }
 
-            if (style.Mark == TokenMark.Crossed)
-            {
-                paint.StrokeWidth = Math.Max(1f, inner * 0.30f);
+            pen.TextSize *= Math.Min(inner * 1.0f / bounds.Height, inner * 1.2f / bounds.Width);
+            pen.MeasureText(glyph, ref bounds);
 
-                // Neither of them upright, and not at a right angle to each other either. Two
-                // staves at forty degrees and fifty read as thrown down anyhow; at forty-five and
-                // forty-five they read as a saltire, which is a device somebody designed.
-                Stave(canvas, paint, centre, inner, -40f);
-                Stave(canvas, paint, centre, inner, 52f);
-            }
-            else
-            {
-                paint.StrokeWidth = Math.Max(1f, inner * 0.15f);
-
-                // Three uprights, the outer two cut down to sit inside the circle. Dead level
-                // they would poke out of the disc; cut to fit, the rank reads as being held
-                // within something, which is what a formation is.
-                for (var i = -1; i <= 1; i++)
-                {
-                    var x = centre + (i * inner * 0.50f);
-                    var reach = inner * (i == 0 ? 0.74f : 0.50f);
-
-                    canvas.DrawLine(x, centre - reach, x, centre + reach, paint);
-                }
-            }
-
-            paint.Style = SKPaintStyle.Fill;
+            canvas.DrawText(glyph, centre - bounds.MidX, centre - bounds.MidY, pen);
         }
 
         /// <summary>
@@ -272,17 +251,6 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
 
                 canvas.DrawCircle(centre + (along * spread), centre, size, paint);
             }
-        }
-
-        /// <summary>One stave of the cross, laid at an angle through the middle of the token.</summary>
-        private static void Stave(SKCanvas canvas, SKPaint paint, float centre, float inner, float degrees)
-        {
-            var radians = degrees * MathF.PI / 180f;
-
-            var dx = MathF.Sin(radians) * inner * 0.78f;
-            var dy = MathF.Cos(radians) * inner * 0.78f;
-
-            canvas.DrawLine(centre - dx, centre - dy, centre + dx, centre + dy, paint);
         }
 
         /// <summary>
