@@ -48,7 +48,7 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
             | (Carries(world, x - 1, y) ? West : 0);
 
         /// <summary>
-        /// Whether the tile at a map coordinate is part of the network: a road, a bridge, or a
+        /// Whether the tile at a map coordinate is part of the network: a road, a path, a bridge, or a
         /// city or fort for them to arrive at. False off the edge of the map, which is what makes
         /// a road run up to the border and stop rather than reach past it.
         /// <para>
@@ -74,6 +74,7 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
             world.At(x, y) is { } tile
             && tile.MapRenderComponents.TryGetValue(RenderComponentLayers.Enhancement, out var built)
             && (built.ComponentType == MapRenderComponentConstants.Road
+                || built.ComponentType == MapRenderComponentConstants.Path
                 || built.ComponentType == MapRenderComponentConstants.Bridge
                 || built.ComponentType == MapRenderComponentConstants.City
                 || built.ComponentType == MapRenderComponentConstants.Fort

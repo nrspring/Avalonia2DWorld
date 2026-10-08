@@ -113,6 +113,12 @@ public partial class MainWindowViewModel : MapViewModelBase
         /// <summary>Stone road, on dry land.</summary>
         Road,
 
+        /// <summary>
+        /// A dirt track, on dry land. Joins up with roads and everything else on the network
+        /// exactly as a road does; it only looks rougher.
+        /// </summary>
+        Path,
+
         /// <summary>The same road carried over water.</summary>
         Bridge,
 
@@ -211,6 +217,18 @@ public partial class MainWindowViewModel : MapViewModelBase
         {
             if (value)
                 Arm(Enhancement.Road);
+        }
+    }
+
+    /// <summary>Whether clicks lay and lift dirt paths.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingPath
+    {
+        get => _building == Enhancement.Path;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Path);
         }
     }
 
@@ -392,6 +410,7 @@ public partial class MainWindowViewModel : MapViewModelBase
 
         OnPropertyChanged(nameof(IsBuildingNothing));
         OnPropertyChanged(nameof(IsBuildingRoad));
+        OnPropertyChanged(nameof(IsBuildingPath));
         OnPropertyChanged(nameof(IsBuildingBridge));
         OnPropertyChanged(nameof(IsBuildingCity));
         OnPropertyChanged(nameof(IsBuildingFort));
@@ -567,6 +586,7 @@ public partial class MainWindowViewModel : MapViewModelBase
             : _buildReport ?? _building switch
             {
                 Enhancement.Road => "Click dry land to lay a road, or an existing one to lift it.",
+                Enhancement.Path => "Click dry land to lay a path, or an existing one to lift it.",
                 Enhancement.Bridge => "Click water to lay a bridge, or an existing one to lift it.",
                 Enhancement.City => "Click dry land to build. Tiles beside each other grow into one town.",
                 Enhancement.Fort => "Click dry land to build. A gate opens on whichever side a road reaches it.",
@@ -699,6 +719,7 @@ public partial class MainWindowViewModel : MapViewModelBase
                 Enhancement.Fort => "is water. A fort wants ground to stand on.",
                 Enhancement.Factory => "is water. A factory wants ground to stand on.",
                 Enhancement.Shipyard => "is water. A yard is built beside the water, not in it.",
+                Enhancement.Path => "is water. A path needs dry ground -- build a bridge.",
                 _ => "is water. A road needs dry ground -- build a bridge.",
             });
 
@@ -718,6 +739,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         var laying = _building switch
         {
             Enhancement.Bridge => MapRenderComponentConstants.Bridge,
+            Enhancement.Path => MapRenderComponentConstants.Path,
             Enhancement.City => MapRenderComponentConstants.City,
             Enhancement.Fort => MapRenderComponentConstants.Fort,
             Enhancement.Factory => MapRenderComponentConstants.Factory,
@@ -742,6 +764,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         Report(clicked, _building switch
         {
             Enhancement.Bridge => "carries a bridge.",
+            Enhancement.Path => "has a path.",
             Enhancement.City => "is built on.",
             Enhancement.Fort => "holds a fort.",
             Enhancement.Factory => "holds a factory.",
@@ -991,6 +1014,7 @@ public partial class MainWindowViewModel : MapViewModelBase
     private static string Describe(Enhancement building) => building switch
     {
         Enhancement.Bridge => "Bridge",
+        Enhancement.Path => "Path",
         Enhancement.Militia => "Militia",
         Enhancement.Soldiers => "Soldiers",
         Enhancement.Cavalry => "Cavalry",
@@ -1021,6 +1045,7 @@ public partial class MainWindowViewModel : MapViewModelBase
     private static Guid? Built(MapTile tile) =>
         tile.MapRenderComponents.TryGetValue(RenderComponentLayers.Enhancement, out var built)
         && (built.ComponentType == MapRenderComponentConstants.Road
+            || built.ComponentType == MapRenderComponentConstants.Path
             || built.ComponentType == MapRenderComponentConstants.Bridge
             || built.ComponentType == MapRenderComponentConstants.City
             || built.ComponentType == MapRenderComponentConstants.Fort

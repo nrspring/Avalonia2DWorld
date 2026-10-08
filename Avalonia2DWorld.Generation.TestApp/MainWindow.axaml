@@ -154,6 +154,9 @@
                     <RadioButton Content="Road"
                                  GroupName="enhancement"
                                  IsChecked="{Binding IsBuildingRoad}" />
+                    <RadioButton Content="Path"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingPath}" />
                     <RadioButton Content="Bridge"
                                  GroupName="enhancement"
                                  IsChecked="{Binding IsBuildingBridge}" />

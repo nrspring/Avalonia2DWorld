@@ -73,7 +73,7 @@ The window opens empty; press **Open** to load a `.nworld` map file (via `MapArc
 
 The world itself is never edited — it's loaded, drawn, and left exactly as it was generated. Everything this app changes lives on top of it, on two layers `MapTile` already reserves for exactly this (`RenderComponentLayers.Enhancement` and `RenderComponentLayers.Unit`), plus free-floating map labels:
 
-- **Enhancements** (built on a tile): **Road**, **Bridge** (roads need dry land; bridges need water), **City** (adjacent city tiles grow into one town), **Fort**, **Factory**, **Shipyard** (needs water adjacent to launch into), **Works** (goes anywhere; draws itself based on whatever resource deposit is under it, if any).
+- **Enhancements** (built on a tile): **Road**, **Path** (a dirt track that joins up exactly like a road), **Bridge** (roads and paths need dry land; bridges need water), **City** (adjacent city tiles grow into one town), **Fort**, **Factory**, **Shipyard** (needs water adjacent to launch into), **Works** (goes anywhere; draws itself based on whatever resource deposit is under it, if any).
 - **Units** (standing on a tile, a separate layer so a tile can hold a building *and* a unit): **Militia**, **Soldiers**, **Cavalry** — all need dry land — and **Boat**/**Cog**/**Carrack** (small/medium/large ships), which need water.
 - **Labels**: free-text map writing, placed at a pixel rather than a tile, with configurable background/foreground colors (typed as `#RRGGBB` / `#AARRGGBB` hex). Click open ground to write, click existing writing to edit it, drag to move it, or use **Rub out** to delete what's currently picked.
 
