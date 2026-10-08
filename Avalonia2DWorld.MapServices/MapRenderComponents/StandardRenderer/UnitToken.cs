@@ -50,7 +50,7 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
     /// <param name="Radius">
     /// How big the token is, as a fraction of the tile. A cue in its own right, and the only one
     /// on this list that still works when the token is four pixels across and every colour has
-    /// gone to mud -- which is why the three ships use it rather than sharing one size.
+    /// gone to mud -- which is why the three levels of each kind of ship use it rather than sharing one size.
     /// </param>
     /// <param name="Count">How many pips, where <see cref="TokenMark.Pips"/> is the mark.</param>
     internal readonly record struct TokenStyle(

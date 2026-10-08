@@ -66,12 +66,21 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
         //5ADD1E for the saddle, which is the thing horse have and foot do not.
         public static Guid Cavalry { get; } = new Guid("5ADD1E00-5ADD-1E00-5ADD-1E005ADD1E00");
 
-        //Ships, named for the vessel rather than for the size: a boat, a cog and a carrack.
-        //Sized apart in the drawing by how many masts each carries, which is a count and so
-        //needs no second ship beside it to be read -- see Vessel.
-        public static Guid SmallShip { get; } = new Guid("B0A70000-B0A7-B0A7-B0A7-B0A7B0A7B0A7");
-        public static Guid MediumShip { get; } = new Guid("C0600000-C060-C060-C060-C060C060C060");
-        public static Guid LargeShip { get; } = new Guid("CA44AC00-CA44-CA44-CA44-CA44CA44CA44");
+        //Ships, in two families of three levels: troop transports and warships. Told apart
+        //within a family by size and a count of pips, and between families by colour -- see
+        //ShipTokens.
+        //
+        //The transports keep the guids the ships had when there was only one kind of them (the
+        //boat, the cog and the carrack, spelled B0A7, C060 and CA44), so a map saved with ships
+        //on it opens with them as transports rather than losing them.
+        public static Guid Transport1 { get; } = new Guid("B0A70000-B0A7-B0A7-B0A7-B0A7B0A7B0A7");
+        public static Guid Transport2 { get; } = new Guid("C0600000-C060-C060-C060-C060C060C060");
+        public static Guid Transport3 { get; } = new Guid("CA44AC00-CA44-CA44-CA44-CA44CA44CA44");
+
+        //BA77 for battle, and the level in the first group.
+        public static Guid Warship1 { get; } = new Guid("BA770001-BA77-BA77-BA77-BA77BA77BA77");
+        public static Guid Warship2 { get; } = new Guid("BA770002-BA77-BA77-BA77-BA77BA77BA77");
+        public static Guid Warship3 { get; } = new Guid("BA770003-BA77-BA77-BA77-BA77BA77BA77");
 
         //Overlay types
         public static Guid ElevationLabel { get; } = new Guid("99999999-9999-9999-9999-999999999999");

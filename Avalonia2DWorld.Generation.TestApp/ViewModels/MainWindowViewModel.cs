@@ -175,14 +175,26 @@ public partial class MainWindowViewModel : MapViewModelBase
         /// <summary>Horse. Foot that goes faster, which is what its chevron says.</summary>
         Cavalry,
 
-        /// <summary>A boat. The first of the three that want water rather than ground.</summary>
-        SmallShip,
+        /// <summary>
+        /// A level-one troop transport. The first of the ships, which want water rather than
+        /// ground.
+        /// </summary>
+        Transport1,
 
-        /// <summary>A cog.</summary>
-        MediumShip,
+        /// <summary>A level-two troop transport.</summary>
+        Transport2,
 
-        /// <summary>A carrack.</summary>
-        LargeShip,
+        /// <summary>A level-three troop transport.</summary>
+        Transport3,
+
+        /// <summary>A level-one warship.</summary>
+        Warship1,
+
+        /// <summary>A level-two warship.</summary>
+        Warship2,
+
+        /// <summary>A level-three warship.</summary>
+        Warship3,
 
         /// <summary>
         /// Writing on the map, placed where it was clicked rather than on the tile clicked.
@@ -357,37 +369,75 @@ public partial class MainWindowViewModel : MapViewModelBase
         }
     }
 
-    /// <summary>Whether clicks moor a boat and cast it off.</summary>
+    /// <summary>Whether clicks moor a level-1 troop transport and cast it off.</summary>
     /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
-    public bool IsBuildingSmallShip
+    public bool IsBuildingTransport1
     {
-        get => _building == Enhancement.SmallShip;
+        get => _building == Enhancement.Transport1;
         set
         {
             if (value)
-                Arm(Enhancement.SmallShip);
+                Arm(Enhancement.Transport1);
         }
     }
 
-    /// <inheritdoc cref="IsBuildingSmallShip"/>
-    public bool IsBuildingMediumShip
+    /// <summary>Whether clicks moor a level-2 troop transport and cast it off.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingTransport2
     {
-        get => _building == Enhancement.MediumShip;
+        get => _building == Enhancement.Transport2;
         set
         {
             if (value)
-                Arm(Enhancement.MediumShip);
+                Arm(Enhancement.Transport2);
         }
     }
 
-    /// <inheritdoc cref="IsBuildingSmallShip"/>
-    public bool IsBuildingLargeShip
+    /// <summary>Whether clicks moor a level-3 troop transport and cast it off.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingTransport3
     {
-        get => _building == Enhancement.LargeShip;
+        get => _building == Enhancement.Transport3;
         set
         {
             if (value)
-                Arm(Enhancement.LargeShip);
+                Arm(Enhancement.Transport3);
+        }
+    }
+
+    /// <summary>Whether clicks moor a level-1 warship and cast it off.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingWarship1
+    {
+        get => _building == Enhancement.Warship1;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Warship1);
+        }
+    }
+
+    /// <summary>Whether clicks moor a level-2 warship and cast it off.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingWarship2
+    {
+        get => _building == Enhancement.Warship2;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Warship2);
+        }
+    }
+
+    /// <summary>Whether clicks moor a level-3 warship and cast it off.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingWarship3
+    {
+        get => _building == Enhancement.Warship3;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Warship3);
         }
     }
 
@@ -438,9 +488,12 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(IsBuildingMilitia));
         OnPropertyChanged(nameof(IsBuildingSoldiers));
         OnPropertyChanged(nameof(IsBuildingCavalry));
-        OnPropertyChanged(nameof(IsBuildingSmallShip));
-        OnPropertyChanged(nameof(IsBuildingMediumShip));
-        OnPropertyChanged(nameof(IsBuildingLargeShip));
+        OnPropertyChanged(nameof(IsBuildingTransport1));
+        OnPropertyChanged(nameof(IsBuildingTransport2));
+        OnPropertyChanged(nameof(IsBuildingTransport3));
+        OnPropertyChanged(nameof(IsBuildingWarship1));
+        OnPropertyChanged(nameof(IsBuildingWarship2));
+        OnPropertyChanged(nameof(IsBuildingWarship3));
         OnPropertyChanged(nameof(IsBuildingLabel));
         OnPropertyChanged(nameof(BuildSummary));
     }
@@ -615,9 +668,10 @@ public partial class MainWindowViewModel : MapViewModelBase
                 Enhancement.Militia => "Click dry land to post militia, or a tile already held to stand them down.",
                 Enhancement.Soldiers => "Click dry land to post soldiers, or a tile already held to stand them down.",
                 Enhancement.Cavalry => "Click dry land to post cavalry, or a tile already held to stand them down.",
-                Enhancement.SmallShip => "Click water to moor a boat, or a tile with one to cast it off.",
-                Enhancement.MediumShip => "Click water to moor a cog, or a tile with one to cast it off.",
-                Enhancement.LargeShip => "Click water to moor a carrack, or a tile with one to cast it off.",
+                Enhancement.Transport1 or Enhancement.Transport2 or Enhancement.Transport3
+                    => "Click water to moor a troop transport, or a tile with a ship to cast it off.",
+                Enhancement.Warship1 or Enhancement.Warship2 or Enhancement.Warship3
+                    => "Click water to moor a warship, or a tile with a ship to cast it off.",
                 Enhancement.Label => _writing.Picked is null
                     ? "Click open ground to write. Click writing to edit it, or drag it somewhere else."
                     : $"Editing \"{_writing.Picked.Text}\". Drag it to move it, or type to change it.",
@@ -1021,17 +1075,23 @@ public partial class MainWindowViewModel : MapViewModelBase
         Enhancement.Militia => MapRenderComponentConstants.Militia,
         Enhancement.Soldiers => MapRenderComponentConstants.Soldiers,
         Enhancement.Cavalry => MapRenderComponentConstants.Cavalry,
-        Enhancement.SmallShip => MapRenderComponentConstants.SmallShip,
-        Enhancement.MediumShip => MapRenderComponentConstants.MediumShip,
-        Enhancement.LargeShip => MapRenderComponentConstants.LargeShip,
+        Enhancement.Transport1 => MapRenderComponentConstants.Transport1,
+        Enhancement.Transport2 => MapRenderComponentConstants.Transport2,
+        Enhancement.Transport3 => MapRenderComponentConstants.Transport3,
+        Enhancement.Warship1 => MapRenderComponentConstants.Warship1,
+        Enhancement.Warship2 => MapRenderComponentConstants.Warship2,
+        Enhancement.Warship3 => MapRenderComponentConstants.Warship3,
         _ => null,
     };
 
     /// <summary>Whether a unit wants water under it rather than ground.</summary>
     private static bool Floats(Guid unit) =>
-        unit == MapRenderComponentConstants.SmallShip
-        || unit == MapRenderComponentConstants.MediumShip
-        || unit == MapRenderComponentConstants.LargeShip;
+        unit == MapRenderComponentConstants.Transport1
+        || unit == MapRenderComponentConstants.Transport2
+        || unit == MapRenderComponentConstants.Transport3
+        || unit == MapRenderComponentConstants.Warship1
+        || unit == MapRenderComponentConstants.Warship2
+        || unit == MapRenderComponentConstants.Warship3;
 
     /// <summary>What to call one of these when the pointer is over it.</summary>
     private static string Describe(Enhancement building) => building switch
@@ -1042,9 +1102,12 @@ public partial class MainWindowViewModel : MapViewModelBase
         Enhancement.Militia => "Militia",
         Enhancement.Soldiers => "Soldiers",
         Enhancement.Cavalry => "Cavalry",
-        Enhancement.SmallShip => "Boat",
-        Enhancement.MediumShip => "Cog",
-        Enhancement.LargeShip => "Carrack",
+        Enhancement.Transport1 => "Transport (level 1)",
+        Enhancement.Transport2 => "Transport (level 2)",
+        Enhancement.Transport3 => "Transport (level 3)",
+        Enhancement.Warship1 => "Warship (level 1)",
+        Enhancement.Warship2 => "Warship (level 2)",
+        Enhancement.Warship3 => "Warship (level 3)",
         Enhancement.City => "Town",
         Enhancement.Fort => "Fort",
         Enhancement.Factory => "Factory",
@@ -1059,9 +1122,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         && (unit.ComponentType == MapRenderComponentConstants.Militia
             || unit.ComponentType == MapRenderComponentConstants.Soldiers
             || unit.ComponentType == MapRenderComponentConstants.Cavalry
-            || unit.ComponentType == MapRenderComponentConstants.SmallShip
-            || unit.ComponentType == MapRenderComponentConstants.MediumShip
-            || unit.ComponentType == MapRenderComponentConstants.LargeShip)
+            || Floats(unit.ComponentType))
             ? unit.ComponentType
             : null;
 
