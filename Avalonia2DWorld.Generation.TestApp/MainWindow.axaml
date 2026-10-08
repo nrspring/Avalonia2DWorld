@@ -187,6 +187,9 @@
                     <RadioButton Content="Cavalry"
                                  GroupName="enhancement"
                                  IsChecked="{Binding IsBuildingCavalry}" />
+                    <RadioButton Content="Archers"
+                                 GroupName="enhancement"
+                                 IsChecked="{Binding IsBuildingArcher}" />
                     <RadioButton Content="Transport 1"
                                  GroupName="enhancement"
                                  IsChecked="{Binding IsBuildingTransport1}" />

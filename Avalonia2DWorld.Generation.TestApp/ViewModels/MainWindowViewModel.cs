@@ -175,6 +175,9 @@ public partial class MainWindowViewModel : MapViewModelBase
         /// <summary>Horse. Foot that goes faster.</summary>
         Cavalry,
 
+        /// <summary>Archers. Foot that fights from a distance.</summary>
+        Archer,
+
         /// <summary>
         /// A level-one troop transport. The first of the ships, which want water rather than
         /// ground.
@@ -369,6 +372,18 @@ public partial class MainWindowViewModel : MapViewModelBase
         }
     }
 
+    /// <summary>Whether clicks post archers and stand them down.</summary>
+    /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
+    public bool IsBuildingArcher
+    {
+        get => _building == Enhancement.Archer;
+        set
+        {
+            if (value)
+                Arm(Enhancement.Archer);
+        }
+    }
+
     /// <summary>Whether clicks moor a level-1 troop transport and cast it off.</summary>
     /// <inheritdoc cref="IsBuildingRoad" path="/summary/para"/>
     public bool IsBuildingTransport1
@@ -488,6 +503,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         OnPropertyChanged(nameof(IsBuildingMilitia));
         OnPropertyChanged(nameof(IsBuildingSoldiers));
         OnPropertyChanged(nameof(IsBuildingCavalry));
+        OnPropertyChanged(nameof(IsBuildingArcher));
         OnPropertyChanged(nameof(IsBuildingTransport1));
         OnPropertyChanged(nameof(IsBuildingTransport2));
         OnPropertyChanged(nameof(IsBuildingTransport3));
@@ -668,6 +684,7 @@ public partial class MainWindowViewModel : MapViewModelBase
                 Enhancement.Militia => "Click dry land to post militia, or a tile already held to stand them down.",
                 Enhancement.Soldiers => "Click dry land to post soldiers, or a tile already held to stand them down.",
                 Enhancement.Cavalry => "Click dry land to post cavalry, or a tile already held to stand them down.",
+                Enhancement.Archer => "Click dry land to post archers, or a tile already held to stand them down.",
                 Enhancement.Transport1 or Enhancement.Transport2 or Enhancement.Transport3
                     => "Click water to moor a troop transport, or a tile with a ship to cast it off.",
                 Enhancement.Warship1 or Enhancement.Warship2 or Enhancement.Warship3
@@ -1075,6 +1092,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         Enhancement.Militia => MapRenderComponentConstants.Militia,
         Enhancement.Soldiers => MapRenderComponentConstants.Soldiers,
         Enhancement.Cavalry => MapRenderComponentConstants.Cavalry,
+        Enhancement.Archer => MapRenderComponentConstants.Archer,
         Enhancement.Transport1 => MapRenderComponentConstants.Transport1,
         Enhancement.Transport2 => MapRenderComponentConstants.Transport2,
         Enhancement.Transport3 => MapRenderComponentConstants.Transport3,
@@ -1102,6 +1120,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         Enhancement.Militia => "Militia",
         Enhancement.Soldiers => "Soldiers",
         Enhancement.Cavalry => "Cavalry",
+        Enhancement.Archer => "Archers",
         Enhancement.Transport1 => "Transport (level 1)",
         Enhancement.Transport2 => "Transport (level 2)",
         Enhancement.Transport3 => "Transport (level 3)",
@@ -1122,6 +1141,7 @@ public partial class MainWindowViewModel : MapViewModelBase
         && (unit.ComponentType == MapRenderComponentConstants.Militia
             || unit.ComponentType == MapRenderComponentConstants.Soldiers
             || unit.ComponentType == MapRenderComponentConstants.Cavalry
+            || unit.ComponentType == MapRenderComponentConstants.Archer
             || Floats(unit.ComponentType))
             ? unit.ComponentType
             : null;

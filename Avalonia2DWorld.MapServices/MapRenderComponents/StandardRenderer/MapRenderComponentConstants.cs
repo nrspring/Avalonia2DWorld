@@ -66,6 +66,9 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
         //5ADD1E for the saddle, which is the thing horse have and foot do not.
         public static Guid Cavalry { get; } = new Guid("5ADD1E00-5ADD-1E00-5ADD-1E005ADD1E00");
 
+        //A440 for the arrow, which is the thing archers have and the rest do not.
+        public static Guid Archer { get; } = new Guid("A4400000-A440-A440-A440-A440A440A440");
+
         //Ships, in two families of three levels: troop transports and warships. Told apart
         //within a family by size and a count of pips, and between families by colour -- see
         //ShipTokens.

@@ -49,6 +49,7 @@ namespace Avalonia2DWorld.MapServices.MapRenderComponents.StandardRenderer
             { MapRenderComponentConstants.Militia, new(RenderMilitia.Render, RenderMilitia.Prewarm, RenderMilitia.ClearCache) },
             { MapRenderComponentConstants.Soldiers, new(RenderSoldiers.Render, RenderSoldiers.Prewarm, RenderSoldiers.ClearCache) },
             { MapRenderComponentConstants.Cavalry, new(RenderCavalry.Render, RenderCavalry.Prewarm, RenderCavalry.ClearCache) },
+            { MapRenderComponentConstants.Archer, new(RenderArcher.Render, RenderArcher.Prewarm, RenderArcher.ClearCache) },
             { MapRenderComponentConstants.Transport1, new(RenderTransport1.Render, RenderTransport1.Prewarm, RenderTransport1.ClearCache) },
             { MapRenderComponentConstants.Transport2, new(RenderTransport2.Render, RenderTransport2.Prewarm, RenderTransport2.ClearCache) },
             { MapRenderComponentConstants.Transport3, new(RenderTransport3.Render, RenderTransport3.Prewarm, RenderTransport3.ClearCache) },
